@@ -1,5 +1,5 @@
 import 'package:carousel_slider/carousel_slider.dart';
-import 'package:flutter/material.dart' hide CarouselController;
+import 'package:flutter/material.dart' hide CarouselSliderController;
 import 'package:flutter/services.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:gap/gap.dart';
@@ -33,7 +33,7 @@ class AddressCarouselState extends State<AddressCarousel> {
   List<int> addressModes = [];
   List<Widget> addresses = [];
   int index = 0;
-  final carouselController = CarouselController();
+  final carouselController = CarouselSliderController();
 
   @override
   void initState() {

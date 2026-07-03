@@ -84,7 +84,7 @@ dependencies:
   getwidget: ^2.0.4
   reflectable: ^4.0.5
   freezed_annotation: any
-  carousel_slider: ^4.2.1
+  carousel_slider: 5.1.2
   showcaseview: ^4.0.1
 
   # The following adds the Cupertino Icons font to your application.
