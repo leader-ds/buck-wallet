@@ -1,5 +1,5 @@
 {
-  "title": "YWallet",
+  "title": "BUCK Wallet",
   "icon": "../assets/icon.png",
   "contents": [
     { "x": 448, "y": 128, "type": "link", "path": "/Applications" },

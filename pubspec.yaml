@@ -181,7 +181,7 @@ flutter_intl:
   enabled: true
 
 msix_config:
-  display_name: Ywallet
+  display_name: BUCK Wallet
   publisher_display_name: Parallax Scroll
   identity_name: 38664ParallaxScroll.Ywallet
   publisher: CN=DF596492-B1AD-4B42-9ECB-4E6208B6D8CD

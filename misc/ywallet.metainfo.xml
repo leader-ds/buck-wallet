@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
     <id>me.hanh.zwallet.Ywallet</id>
-    <name>Ywallet</name>
+    <name>BUCK Wallet</name>
     <metadata_license>CC0-1.0</metadata_license>
     <summary>
         Light Wallet for Ycash

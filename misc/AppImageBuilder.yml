@@ -10,7 +10,7 @@ AppDir:
   path: AppDir
   app_info:
     id: me.hanh.zwallet.Ywallet
-    name: Ywallet
+    name: BUCK Wallet
     icon: ywallet
     version: latest
     exec: ywallet
