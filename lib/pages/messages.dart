@@ -24,6 +24,9 @@ class MessagePage extends StatelessWidget {
           aaSequence.seqno;
           aaSequence.settingsSeqno;
           syncStatus2.changed;
+          if (aa.messages.items.isEmpty) {
+            return Center(child: Text('No messages yet'));
+          }
           return TableListPage(
             listKey: PageStorageKey('messages'),
             padding: EdgeInsets.fromLTRB(16, 8, 16, 8),

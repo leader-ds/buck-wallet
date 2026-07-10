@@ -116,6 +116,9 @@ class ContactListState extends State<ContactList> {
   Widget build(BuildContext context) {
     return Observer(builder: (context) {
       final c = contacts.contacts;
+      if (c.isEmpty) {
+        return Center(child: Text('No contacts yet'));
+      }
       return ListView.separated(
         itemBuilder: (context, index) => ContactItem(
           c[index].unpack(),

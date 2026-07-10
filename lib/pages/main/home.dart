@@ -3,7 +3,6 @@ import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../generated/intl/messages.dart';
 import '../../appsettings.dart';
 import '../../store2.dart';
 import '../../accounts.dart';
@@ -41,7 +40,6 @@ class _HomeState extends State<HomePageInner> {
 
   @override
   Widget build(BuildContext context) {
-    final s = S.of(context);
     return Scaffold(
         floatingActionButton: GestureDetector(
             onLongPress: () => _send(true),
@@ -77,7 +75,7 @@ class _HomeState extends State<HomePageInner> {
                           if (!aa.saved)
                             OutlinedButton(
                                 onPressed: _backup,
-                                child: Text(s.backupMissing))
+                                child: Text('Backup recommended'))
                         ])),
                   ],
                 );

@@ -392,7 +392,7 @@ class _ScaffoldBar extends State<ScaffoldBar> {
         onPopInvoked: _onPop,
         child: Scaffold(
           appBar: AppBar(
-            title: Text(aa.name),
+            title: Text('BUCK Wallet'),
             centerTitle: true,
             actions: [
               IconButton(onPressed: help, icon: Icon(Icons.help)),
@@ -423,7 +423,7 @@ class _ScaffoldBar extends State<ScaffoldBar> {
   }
 
   help() {
-    launchUrl(Uri.https('ywallet.app'));
+    launchUrl(Uri.https('help.buck.red'));
   }
 
   settings() {
