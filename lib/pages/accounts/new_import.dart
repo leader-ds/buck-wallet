@@ -69,7 +69,10 @@ class _NewImportAccountState extends State<NewImportAccountPage>
             key: formKey,
             child: Column(
               children: [
-                Image.asset('assets/icon.png', height: 128),
+                Image.asset(
+                  'assets/branding/buck_logo_square.png',
+                  height: 128,
+                ),
                 Gap(16),
                 FormBuilderTextField(
                     name: 'name',

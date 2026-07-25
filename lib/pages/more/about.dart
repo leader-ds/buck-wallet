@@ -30,6 +30,19 @@ class AboutPage extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Column(
               children: [
+                Image.asset(
+                  Theme.of(context).brightness == Brightness.dark
+                      ? 'assets/branding/buck_wordmark_white.png'
+                      : 'assets/branding/buck_wordmark_black.png',
+                  height: 72,
+                  fit: BoxFit.contain,
+                ),
+                Gap(8),
+                Text(
+                  'BUCK Wallet',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                Gap(16),
                 MarkdownBody(data: content),
                 Padding(padding: EdgeInsets.symmetric(vertical: 8)),
                 TextButton(

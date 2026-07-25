@@ -199,7 +199,10 @@ class _LoadProgressState extends State<LoadProgress> {
                 height: 240,
                 width: 200,
                 child: Column(children: [
-                  Image.asset('assets/icon.png', height: 64),
+                  Image.asset(
+                    'assets/branding/buck_logo_square.png',
+                    height: 64,
+                  ),
                   Padding(padding: EdgeInsets.all(16)),
                   Text(s.loading, style: textTheme.headlineMedium),
                   Padding(padding: EdgeInsets.all(16)),

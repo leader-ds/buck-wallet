@@ -92,7 +92,9 @@ class AddressCarouselState extends State<AddressCarousel> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: addresses
-            .asMap().entries.map(
+              .asMap()
+              .entries
+              .map(
                 (kv) => GestureDetector(
                   onTap: () {
                     carouselController.animateToPage(kv.key);
@@ -141,7 +143,9 @@ class _QRAddressState extends State<QRAddressWidget> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final a = widget.amount ?? 0;
-    final image = coins[aa.coin].image;
+    final image = aa.coin == 0
+        ? const AssetImage('assets/branding/buck_logo_qr.png')
+        : coins[aa.coin].image;
 
     return Observer(builder: (context) {
       aa.diversifiedAddress;

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'coin.dart';
 
+// Fixed BUCK network fee, expressed in base units.
+const int BUCK_FIXED_FEE = 10000;
+
 class BuckCoin extends CoinBase {
   int coin = 0;
   String name = "BUCK";
@@ -12,8 +15,9 @@ class BuckCoin extends CoinBase {
   String ticker = "BUCK";
   String dbName = "buck.db";
   String? marketTicker = null;
-  // TODO: Replace with official BUCK asset in the branding milestone.
-  AssetImage image = AssetImage('assets/zcash.png');
+  @override
+  int get fixedNetworkFee => BUCK_FIXED_FEE;
+  AssetImage image = AssetImage('assets/branding/buck_logo_square.png');
 
   List<LWInstance> lwd = [
     LWInstance("BUCK Lightwallet", "https://wallet.buck.red:9067"),
