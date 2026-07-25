@@ -17,7 +17,7 @@ class BuckCoin extends CoinBase {
   String? marketTicker = null;
   @override
   int get fixedNetworkFee => BUCK_FIXED_FEE;
-  AssetImage image = AssetImage('assets/branding/buck_logo_square.png');
+  AssetImage image = AssetImage('assets/branding/buck_logo_small_ui.png');
 
   List<LWInstance> lwd = [
     LWInstance("BUCK Lightwallet", "https://wallet.buck.red:9067"),
