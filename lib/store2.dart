@@ -6,7 +6,9 @@ import 'dart:math';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:get_it/get_it.dart';
 import 'package:mobx/mobx.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:warp_api/data_fb_generated.dart';
+import 'package:warp_api/server_coordinator.dart';
 import 'package:warp_api/warp_api.dart';
 
 import 'appsettings.dart';
@@ -14,6 +16,9 @@ import 'pages/utils.dart';
 import 'accounts.dart';
 import 'coin/coins.dart';
 import 'generated/intl/messages.dart';
+import 'failover_controller.dart';
+import 'sync_lifecycle_coordinator.dart';
+import 'runtime_server_transition.dart';
 
 part 'store2.g.dart';
 part 'store2.freezed.dart';
@@ -36,26 +41,83 @@ final syncProgressStream = syncProgressPort2.asBroadcastStream();
 void initSyncListener() {
   syncProgressStream.listen((e) {
     if (e is List<int>) {
+      final token = syncLifecycleCoordinator.authoritativeToken;
+      if (token == null) return;
       final progress = Progress(e);
-      syncStatus2.setProgress(progress);
+      syncStatus2.setProgressOwned(token, progress);
+      if (!syncLifecycleCoordinator.ownsAuthoritativeRun(token)) return;
       final b = progress.balances?.unpack();
-      if (b != null) aa.poolBalances = b;
+      if (b != null) (token.account as ActiveAccount2).poolBalances = b;
       logger.d(progress.balances);
     }
   });
 }
 
-Timer? syncTimer;
+Future<void> startAutoSync() {
+  syncLifecycleCoordinator.startAutomaticSync();
+  return syncLifecycleCoordinator.requestSync(getTx: false, auto: true);
+}
 
-Future<void> startAutoSync() async {
-  if (syncTimer == null) {
-    await syncStatus2.update();
-    await syncStatus2.sync(false, auto: true);
-    syncTimer = Timer.periodic(Duration(seconds: 15), (timer) {
-      syncStatus2.sync(false, auto: true);
-      aa.updateDivisified();
-    });
-  }
+Future<void> setActiveAccount(int requestedCoin, int requestedAccountId) {
+  return _runActiveAccountTransition(requestedCoin, requestedAccountId);
+}
+
+Future<void> activateNewAccount(
+  int requestedCoin,
+  int requestedAccountId, {
+  required bool skipToLastHeight,
+}) {
+  return _runActiveAccountTransition(
+    requestedCoin,
+    requestedAccountId,
+    beforePersistence:
+        skipToLastHeight ? () => WarpApi.skipToLastHeight(requestedCoin) : null,
+  );
+}
+
+Future<void> deleteActiveAccountAndInstallFallback(
+  int deletedCoin,
+  int deletedAccountId,
+) {
+  return _runActiveAccountTransition(
+    0,
+    0,
+    beforePublish: () => WarpApi.deleteAccount(
+      deletedCoin,
+      deletedAccountId,
+    ),
+  );
+}
+
+Future<void> _runActiveAccountTransition(
+  int requestedCoin,
+  int requestedAccountId, {
+  FutureOr<void> Function()? beforePersistence,
+  FutureOr<void> Function()? beforePublish,
+}) {
+  return syncLifecycleCoordinator.runAccountTransition<void>(() async {
+    final nextSettings = CoinSettingsExtension.load(requestedCoin);
+    final nextAccount = ActiveAccount2.fromId(
+      requestedCoin,
+      requestedAccountId,
+    );
+
+    // Complete all fallible initialization and exact-selection persistence
+    // before publishing either global.
+    nextAccount.updatePrepared(null, nextSettings.uaType);
+    await beforePersistence?.call();
+    nextSettings.account = requestedAccountId;
+    nextSettings.save(requestedCoin);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('coin', requestedCoin);
+    await prefs.setInt('account', requestedAccountId);
+    await beforePublish?.call();
+
+    coinSettings = nextSettings;
+    aa = nextAccount;
+    syncStatus2.resetForAccount(requestedCoin);
+    aaSequence.seqno = DateTime.now().microsecondsSinceEpoch;
+  });
 }
 
 var syncStatus2 = SyncStatus2();
@@ -123,61 +185,128 @@ abstract class _SyncStatus2 with Store {
   }
 
   @action
-  Future<void> update() async {
-    try {
-      final lh = latestHeight;
-      latestHeight = await WarpApi.getLatestHeight(aa.coin);
-      if (lh == null && latestHeight != null) aa.update(latestHeight);
-      connected = true;
-    } on String catch (e) {
-      logger.d(e);
-      connected = false;
-    }
-    syncedHeight = WarpApi.getDbHeight(aa.coin).height;
+  void resetForAccount(int coin) {
+    connected = true;
+    latestHeight = null;
+    final height = WarpApi.getDbHeight(coin);
+    syncedHeight = height.height;
+    timestamp = height.timestamp == 0
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(height.timestamp * 1000);
+    syncing = false;
+    paused = false;
+    isRescan = false;
+    startSyncedHeight = syncedHeight;
+    eta.end();
+    downloadedSize = 0;
+    trialDecryptionCount = 0;
   }
 
   @action
-  Future<void> sync(bool rescan, {bool auto = false}) async {
+  void resetForServer() {
+    connected = false;
+    latestHeight = null;
+    syncing = false;
+    isRescan = false;
+    startSyncedHeight = syncedHeight;
+    eta.end();
+    downloadedSize = 0;
+    trialDecryptionCount = 0;
+    // `paused` has no source/reason metadata, so preserve it as the safest
+    // approximation of an explicit user pause.
+  }
+
+  @action
+  Future<void> update() async {
+    final token = syncLifecycleCoordinator.currentToken;
+    final account = token.account as ActiveAccount2;
+    await _updateOwned(token, account);
+  }
+
+  Future<void> _updateOwned(
+    SyncLifecycleToken token,
+    ActiveAccount2 account,
+  ) async {
+    try {
+      final lh = latestHeight;
+      final newLatestHeight = await WarpApi.getLatestHeight(token.coin);
+      if (!syncLifecycleCoordinator.owns(token)) return;
+      latestHeight = newLatestHeight;
+      if (lh == null) {
+        account.update(newLatestHeight);
+      }
+      if (!syncLifecycleCoordinator.owns(token)) return;
+      connected = true;
+    } on String catch (e) {
+      logger.d(e);
+      if (!syncLifecycleCoordinator.owns(token)) return;
+      connected = false;
+    }
+    if (!syncLifecycleCoordinator.owns(token)) return;
+    syncedHeight = WarpApi.getDbHeight(token.coin).height;
+  }
+
+  @action
+  Future<void> sync(bool rescan, {bool auto = false}) {
+    return syncLifecycleCoordinator.requestSync(getTx: rescan, auto: auto);
+  }
+
+  Future<void> syncOwned(
+    SyncLifecycleToken token, {
+    required bool rescan,
+    required bool auto,
+  }) async {
+    final account = token.account as ActiveAccount2;
     logger.d('R/A/P/S $rescan $auto $paused $syncing');
     if (paused) return;
-    if (syncing) return;
     try {
-      await update();
+      await _updateOwned(token, account);
+      if (!syncLifecycleCoordinator.ownsAuthoritativeRun(token)) return;
       final lh = latestHeight;
       if (lh == null) return;
       // don't auto sync more than 1 month of data
       if (!rescan && auto && lh - syncedHeight > 30 * 24 * 60 * 4 / 5) {
+        if (!syncLifecycleCoordinator.ownsAuthoritativeRun(token)) return;
         paused = true;
         return;
       }
       if (isSynced) return;
+      if (!syncLifecycleCoordinator.ownsAuthoritativeRun(token)) return;
       syncing = true;
       isRescan = rescan;
-      _updateSyncedHeight();
+      _updateSyncedHeight(token);
       startSyncedHeight = syncedHeight;
       eta.begin(latestHeight!);
       eta.checkpoint(syncedHeight, DateTime.now());
 
       final preBalance = AccountBalanceSnapshot(
-          coin: aa.coin, id: aa.id, balance: aa.poolBalances.total);
+          coin: token.coin,
+          id: token.accountId,
+          balance: account.poolBalances.total);
       // This may take a long time
       await WarpApi.warpSync(
-          aa.coin,
-          aa.id,
+          token.coin,
+          token.accountId,
           !appSettings.nogetTx,
           appSettings.anchorOffset,
           coinSettings.spamFilter ? 50 : 1000000,
           syncProgressPort2.sendPort.nativePort);
 
-      aa.update(latestHeight);
+      if (!syncLifecycleCoordinator.ownsAuthoritativeRun(token)) return;
+      account.update(latestHeight);
+      if (!syncLifecycleCoordinator.ownsAuthoritativeRun(token)) return;
       contacts.fetchContacts();
+      if (!syncLifecycleCoordinator.ownsAuthoritativeRun(token)) return;
       marketPrice.update();
+      if (!syncLifecycleCoordinator.ownsAuthoritativeRun(token)) return;
       final postBalance = AccountBalanceSnapshot(
-          coin: aa.coin, id: aa.id, balance: aa.poolBalances.total);
+          coin: token.coin,
+          id: token.accountId,
+          balance: account.poolBalances.total);
       if (preBalance.sameAccount(postBalance) &&
           preBalance.balance != postBalance.balance) {
         final s = GetIt.I.get<S>();
-        final ticker = coins[aa.coin].ticker;
+        final ticker = coins[token.coin].ticker;
         if (preBalance.balance < postBalance.balance) {
           final amount =
               amountToString2(postBalance.balance - preBalance.balance);
@@ -198,10 +327,12 @@ abstract class _SyncStatus2 with Store {
       }
     } on String catch (e) {
       logger.d(e);
-      showSnackBar(e);
+      if (syncLifecycleCoordinator.ownsAuthoritativeRun(token)) showSnackBar(e);
     } finally {
-      syncing = false;
-      eta.end();
+      if (syncLifecycleCoordinator.ownsAuthoritativeRun(token)) {
+        syncing = false;
+        eta.end();
+      }
     }
   }
 
@@ -220,6 +351,13 @@ abstract class _SyncStatus2 with Store {
 
   @action
   void setProgress(Progress progress) {
+    final token = syncLifecycleCoordinator.authoritativeToken;
+    if (token == null) return;
+    setProgressOwned(token, progress);
+  }
+
+  void setProgressOwned(SyncLifecycleToken token, Progress progress) {
+    if (!syncLifecycleCoordinator.ownsAuthoritativeRun(token)) return;
     trialDecryptionCount = progress.trialDecryptions;
     syncedHeight = progress.height;
     downloadedSize = progress.downloaded;
@@ -229,14 +367,102 @@ abstract class _SyncStatus2 with Store {
     eta.checkpoint(syncedHeight, DateTime.now());
   }
 
-  void _updateSyncedHeight() {
-    final h = WarpApi.getDbHeight(aa.coin);
+  void _updateSyncedHeight([SyncLifecycleToken? ownedToken]) {
+    final token = ownedToken ?? syncLifecycleCoordinator.currentToken;
+    if (!syncLifecycleCoordinator.owns(token)) return;
+    final h = WarpApi.getDbHeight(token.coin);
+    if (!syncLifecycleCoordinator.owns(token)) return;
     syncedHeight = h.height;
     timestamp = (h.timestamp != 0)
         ? DateTime.fromMillisecondsSinceEpoch(h.timestamp * 1000)
         : null;
   }
 }
+
+final SyncLifecycleCoordinator syncLifecycleCoordinator =
+    SyncLifecycleCoordinator(
+  accountProvider: () => SyncLifecycleAccount(
+    coin: aa.coin,
+    accountId: aa.id,
+    account: aa,
+  ),
+  sync: (token, {required getTx, required auto}) => syncStatus2.syncOwned(
+    token,
+    rescan: getTx,
+    auto: auto,
+  ),
+  cancel: WarpApi.cancelSync,
+  automaticRefresh: (token) => _handleAutomaticSyncSuccess(token),
+  automaticError: (error, stackTrace) {
+    failoverController.observeRuntimeSyncFailure();
+    unawaited(_refreshFailoverHealth());
+    logger.e(
+      'Automatic synchronization failed',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  },
+);
+
+final RuntimeServerTransition runtimeServerTransition = RuntimeServerTransition(
+  lifecycle: syncLifecycleCoordinator,
+  probeServer: WarpApi.probeServer,
+  updateLwd: WarpApi.updateLWD,
+  getLwd: WarpApi.getLWD,
+  commitSettings: (coin, url) {
+    final matchingIndex = coins[coin].lwd.indexWhere(
+      (server) {
+        try {
+          return normalizeLightwalletUrl(server.url) ==
+              normalizeLightwalletUrl(url);
+        } catch (_) {
+          return false;
+        }
+      },
+    );
+    coinSettings.lwd.index = matchingIndex;
+    coinSettings.lwd.customURL = matchingIndex < 0 ? url : '';
+    coinSettings.save(coin);
+  },
+  resetState: syncStatus2.resetForServer,
+);
+
+final ServerCoordinator serverCoordinator = ServerCoordinator();
+final Stopwatch _failoverClock = Stopwatch()..start();
+final FailoverController failoverController = FailoverController(
+  serverCoordinator: serverCoordinator,
+  runtimeServerTransition: runtimeServerTransition,
+  monotonicClock: () => _failoverClock.elapsed,
+);
+
+void _handleAutomaticSyncSuccess(SyncLifecycleToken token) {
+  (token.account as ActiveAccount2).updateDivisified();
+  failoverController.observeRuntimeSyncSuccess();
+  unawaited(_refreshFailoverHealth());
+}
+
+Future<void> _refreshFailoverHealth() async {
+  try {
+    await serverCoordinator.refresh();
+    final token = syncLifecycleCoordinator.currentToken;
+    await failoverController.observeProbeResults(
+      coin: token.coin,
+      activeUrl: WarpApi.getLWD(token.coin),
+    );
+  } catch (error, stackTrace) {
+    logger.e(
+      'Automatic failover health refresh failed',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+}
+
+Future<ServerTransitionResult> switchServer({
+  required int coin,
+  required String targetUrl,
+}) =>
+    runtimeServerTransition.switchServer(coin: coin, targetUrl: targetUrl);
 
 class ETA {
   int endHeight = 0;

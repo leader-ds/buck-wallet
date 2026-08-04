@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
@@ -7,8 +8,11 @@ import 'package:flat_buffers/flat_buffers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:ffi/ffi.dart';
+import 'server_probe.dart';
 import 'warp_api_generated.dart' hide bool;
 import 'data_fb_generated.dart';
+
+export 'server_probe.dart';
 
 typedef report_callback = Void Function(Int32);
 
@@ -785,6 +789,13 @@ class WarpApi {
     return await compute((_) {
       return unwrapResultU32(warp_api_lib.ping(toNative(server)));
     }, null);
+  }
+
+  static Future<ServerProbeResult> probeServer(String server) async {
+    final json = await compute((_) {
+      return unwrapResultString(warp_api_lib.probe_server(toNative(server)));
+    }, null);
+    return ServerProbeResult.fromJson(jsonDecode(json) as Map<String, dynamic>);
   }
 
   static Future<int> importFromLedger(int coin, String name) async {

@@ -3,12 +3,10 @@ import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:warp_api/warp_api.dart';
 
 import '../../store2.dart';
 import '../utils.dart';
-import '../../accounts.dart';
 import '../../coin/coins.dart';
 import '../../generated/intl/messages.dart';
 import '../../pages/widgets.dart';
@@ -146,14 +144,12 @@ class _NewImportAccountState extends State<NewImportAccountPage>
         if (account < 0)
           form.fields['name']!.invalidate(s.thisAccountAlreadyExists);
         else {
-          setActiveAccount(coin, account);
-          final prefs = await SharedPreferences.getInstance();
-          await aa.save(prefs);
           final count = WarpApi.countAccounts(coin);
-          if (count == 1) {
-            // First account of a coin is synced
-            await WarpApi.skipToLastHeight(coin);
-          }
+          await activateNewAccount(
+            coin,
+            account,
+            skipToLastHeight: count == 1,
+          );
           if (widget.first) {
             if (_key.isNotEmpty)
               GoRouter.of(context).go('/account/rescan');

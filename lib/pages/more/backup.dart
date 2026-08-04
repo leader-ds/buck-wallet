@@ -7,6 +7,7 @@ import 'package:warp_api/warp_api.dart';
 
 import '../../accounts.dart';
 import '../../generated/intl/messages.dart';
+import '../../store2.dart';
 
 class BackupPage extends StatefulWidget {
   late final Backup backup;
@@ -100,9 +101,11 @@ class _BackupState extends State<BackupPage> {
     );
   }
 
-  _remind(bool? v) {
-    WarpApi.setBackupReminder(aa.coin, aa.id, v!);
-    setActiveAccount(aa.coin, aa.id); // reload
+  _remind(bool? v) async {
+    final coin = aa.coin;
+    final id = aa.id;
+    WarpApi.setBackupReminder(coin, id, v!);
+    await setActiveAccount(coin, id); // reload
   }
 }
 

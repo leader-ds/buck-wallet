@@ -29,16 +29,6 @@ abstract class _AASequence with Store {
   int settingsSeqno = 0;
 }
 
-void setActiveAccount(int coin, int id) {
-  coinSettings = CoinSettingsExtension.load(coin);
-  aa = ActiveAccount2.fromId(coin, id);
-  coinSettings.account = id;
-  coinSettings.save(coin);
-  aa.updateDivisified();
-  aa.update(null);
-  aaSequence.seqno = DateTime.now().microsecondsSinceEpoch;
-}
-
 class ActiveAccount2 extends _ActiveAccount2 with _$ActiveAccount2 {
   ActiveAccount2(super.coin, super.id, super.name, super.seed, super.canPay,
       super.external, super.saved);
@@ -121,17 +111,25 @@ abstract class _ActiveAccount2 with Store {
 
   @action
   void updateDivisified() {
+    updateDivisifiedForUaType(coinSettings.uaType);
+  }
+
+  void updateDivisifiedForUaType(int uaType) {
     if (id == 0) return;
     try {
-      diversifiedAddress = WarpApi.getDiversifiedAddress(coin, id,
-          coinSettings.uaType, DateTime.now().millisecondsSinceEpoch ~/ 1000);
+      diversifiedAddress = WarpApi.getDiversifiedAddress(
+          coin, id, uaType, DateTime.now().millisecondsSinceEpoch ~/ 1000);
     } catch (e) {}
   }
 
   @action
   void update(int? newHeight) {
+    updatePrepared(newHeight, coinSettings.uaType);
+  }
+
+  void updatePrepared(int? newHeight, int uaType) {
     if (id == 0) return;
-    updateDivisified();
+    updateDivisifiedForUaType(uaType);
     updatePoolBalances();
 
     notes.read(newHeight);
