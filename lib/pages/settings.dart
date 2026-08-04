@@ -102,13 +102,20 @@ class _SettingsState extends State<SettingsPage>
 
   _ok() async {
     if (validate()) {
+      final serverUrl = resolveURL(coins[aa.coin], coinSettings);
+      final transition = await switchServer(
+        coin: aa.coin,
+        targetUrl: serverUrl,
+      );
+      if (!transition.success) {
+        showSnackBar(transition.errorMessage ?? 'Unable to change server');
+        return;
+      }
       final prefs = await SharedPreferences.getInstance();
       await appSettings.save(prefs);
       coinKey.currentState?.let((c) => coinSettings.save(aa.coin));
       app.appSettings = app.AppSettingsExtension.load(prefs);
       app.coinSettings = app.CoinSettingsExtension.load(aa.coin);
-      final serverUrl = resolveURL(coins[aa.coin], app.coinSettings);
-      WarpApi.updateLWD(aa.coin, serverUrl);
       aaSequence.settingsSeqno = DateTime.now().millisecondsSinceEpoch;
       Future(() async {
         await marketPrice.update();

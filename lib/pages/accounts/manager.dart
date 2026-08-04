@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:warp_api/data_fb_generated.dart';
 import 'package:warp_api/warp_api.dart';
 
 import '../../accounts.dart';
 import '../../coin/coins.dart';
 import '../../generated/intl/messages.dart';
+import '../../store2.dart';
 import '../utils.dart';
 
 class AccountManagerPage extends StatefulWidget {
@@ -65,15 +65,10 @@ class _AccountManagerState extends State<AccountManagerPage> {
     setState(() {});
   }
 
-  select(int index) {
+  select(int index) async {
     final a = accounts[index];
     if (widget.main) {
-      setActiveAccount(a.coin, a.id);
-      Future(() async {
-        final prefs = await SharedPreferences.getInstance();
-        await aa.save(prefs);
-      });
-      aa.update(null);
+      await setActiveAccount(a.coin, a.id);
     }
     GoRouter.of(context).pop<Account>(a);
   }
@@ -89,10 +84,13 @@ class _AccountManagerState extends State<AccountManagerPage> {
     final confirmed = await showConfirmDialog(
         context, s.deleteAccount(a.name!), s.confirmDeleteAccount);
     if (confirmed) {
-      WarpApi.deleteAccount(a.coin, a.id);
+      if (count == 1) {
+        await deleteActiveAccountAndInstallFallback(a.coin, a.id);
+      } else {
+        WarpApi.deleteAccount(a.coin, a.id);
+      }
       _refresh();
       if (count == 1) {
-        setActiveAccount(0, 0);
         GoRouter.of(context).go('/account');
       } else {
         selected = null;

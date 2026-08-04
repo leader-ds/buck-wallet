@@ -1786,6 +1786,20 @@ class NativeLibrary {
   late final _ping =
       _pingPtr.asFunction<CResult_u32 Function(ffi.Pointer<ffi.Char>)>();
 
+  CResult_____c_char probe_server(
+    ffi.Pointer<ffi.Char> lwd_url,
+  ) {
+    return _probe_server(
+      lwd_url,
+    );
+  }
+
+  late final _probe_serverPtr = _lookup<
+      ffi.NativeFunction<
+          CResult_____c_char Function(ffi.Pointer<ffi.Char>)>>('probe_server');
+  late final _probe_server = _probe_serverPtr
+      .asFunction<CResult_____c_char Function(ffi.Pointer<ffi.Char>)>();
+
   CResult_u8 store_swap(
     int coin,
     int account,

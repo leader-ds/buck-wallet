@@ -47,6 +47,7 @@ class _SplashState extends State<SplashPage> {
         _initWallets();
         await _restoreActive();
         initSyncListener();
+        await startAutoSync();
         // _initForegroundTask();
         _initBackgroundSync();
         _initAccel();
@@ -56,9 +57,9 @@ class _SplashState extends State<SplashPage> {
         }
         appStore.initialized = true;
         if (applinkUri != null)
-          handleUri(applinkUri);
+          await handleUri(applinkUri);
         else if (quickAction != null)
-          handleQuickAction(context, quickAction);
+          await handleQuickAction(context, quickAction);
         else
           GoRouter.of(context).go('/account');
       });
@@ -139,10 +140,7 @@ class _SplashState extends State<SplashPage> {
     _setProgress(0.8, 'Load Active Account');
     final prefs = await SharedPreferences.getInstance();
     final a = ActiveAccount2.fromPrefs(prefs);
-    a?.let((a) {
-      setActiveAccount(a.coin, a.id);
-      aa.update(syncStatus2.latestHeight);
-    });
+    if (a != null) await setActiveAccount(a.coin, a.id);
   }
 
   _initAccel() {
@@ -222,19 +220,19 @@ class _LoadProgressState extends State<LoadProgress> {
 
 StreamSubscription? subUniLinks;
 
-bool setActiveAccountOf(int coin) {
+Future<bool> setActiveAccountOf(int coin) async {
   final coinSettings = CoinSettingsExtension.load(coin);
   final id = coinSettings.account;
   if (id == 0) return false;
-  setActiveAccount(coin, id);
+  await setActiveAccount(coin, id);
   return true;
 }
 
-void handleUri(Uri uri) {
+Future<void> handleUri(Uri uri) async {
   final scheme = uri.scheme;
   final coinDef = coins.firstWhere((c) => c.currency == scheme);
   final coin = coinDef.coin;
-  if (setActiveAccountOf(coin)) {
+  if (await setActiveAccountOf(coin)) {
     SendContext? sc = SendContext.fromPaymentURI(uri.toString());
     final context = rootNavigatorKey.currentContext!;
     GoRouter.of(context).go('/account/quick_send', extra: sc);
@@ -247,18 +245,21 @@ Future<Uri?> registerURLHandler() async {
 
   subUniLinks = _appLinks.uriLinkStream.listen((uri) {
     logger.d(uri);
-    handleUri(uri);
+    unawaited(handleUri(uri).catchError((Object error, StackTrace stackTrace) {
+      logger.e('Payment URI account transition failed',
+          error: error, stackTrace: stackTrace);
+    }));
   });
 
   final uri = await _appLinks.getInitialAppLink();
   return uri;
 }
 
-void handleQuickAction(BuildContext context, String quickAction) {
+Future<void> handleQuickAction(BuildContext context, String quickAction) async {
   final t = quickAction.split(".");
   final coin = int.parse(t[0]);
   final shortcut = t[1];
-  setActiveAccountOf(coin);
+  if (!await setActiveAccountOf(coin)) return;
   switch (shortcut) {
     case 'receive':
       GoRouter.of(context).go('/account/pay_uri');
