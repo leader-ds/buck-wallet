@@ -42,6 +42,7 @@ class FailoverController {
   ServerTransitionResult? _lastTransitionResult;
   bool _preferredServerRecovered = false;
   bool _automaticFailoverCompleted = false;
+  String? _lastObservedActiveServerId;
 
   FailoverController({
     required this.serverCoordinator,
@@ -78,6 +79,11 @@ class FailoverController {
     if (inFlight != null) return inFlight;
 
     final activeStatus = _statusForUrl(activeUrl);
+    final activeServerId = activeStatus?.server.id;
+    if (activeServerId != _lastObservedActiveServerId) {
+      _consecutiveFailedProbes = 0;
+      _lastObservedActiveServerId = activeServerId;
+    }
     if (activeStatus == null ||
         activeStatus.healthState == ServerHealthState.unknown ||
         activeStatus.healthState == ServerHealthState.checking) {
