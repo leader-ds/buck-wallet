@@ -51,8 +51,7 @@ void main() {
     expect(coordinator.servers, hasLength(2));
     expect(
       coordinator.servers.map(
-        (server) =>
-            [server.id, server.url, server.priority, server.enabled],
+        (server) => [server.id, server.url, server.priority, server.enabled],
       ),
       [
         ['fr-primary', 'https://wallet.buck.red:9067', 1, true],
@@ -211,6 +210,84 @@ void main() {
     gate.complete();
     await Future.wait([first, second]);
     expect(calls, 2);
+  });
+
+  test('replacement waits for refresh and resets all status and selection',
+      () async {
+    final gate = Completer<void>();
+    final coordinator = ServerCoordinator(probe: (url) async {
+      await gate.future;
+      return probeResult(url);
+    });
+    final refresh = coordinator.refresh();
+    final replacement = coordinator.replaceServers(const [
+      ServerDefinition(
+          id: 'new',
+          name: 'New',
+          url: 'https://new.example:9067',
+          priority: 1,
+          enabled: true),
+    ]);
+    await Future<void>.delayed(Duration.zero);
+    expect(
+        coordinator.servers.map((s) => s.id), ['fr-primary', 'fr-secondary']);
+    gate.complete();
+    await Future.wait([refresh, replacement]);
+    expect(coordinator.servers.single.id, 'new');
+    expect(coordinator.statuses.single.healthState, ServerHealthState.unknown);
+    expect(coordinator.selectedCandidate, isNull);
+  });
+
+  test('replacement validates, normalizes, and stores an immutable copy',
+      () async {
+    final coordinator = ServerCoordinator();
+    final input = <ServerDefinition>[
+      const ServerDefinition(
+        id: 'new',
+        name: 'New',
+        url: 'HTTPS://NEW.EXAMPLE',
+        priority: 1,
+        enabled: true,
+      ),
+    ];
+    final result = await coordinator.replaceServers(input);
+    input.clear();
+    expect(result.success, isTrue);
+    expect(result.changed, isTrue);
+    expect(coordinator.servers.single.url, 'https://new.example/');
+    expect(() => coordinator.servers.clear(), throwsUnsupportedError);
+
+    final duplicate = await coordinator.replaceServers(const [
+      ServerDefinition(
+        id: 'one',
+        name: 'One',
+        url: 'https://same.example',
+        priority: 1,
+        enabled: true,
+      ),
+      ServerDefinition(
+        id: 'two',
+        name: 'Two',
+        url: 'https://SAME.example/',
+        priority: 2,
+        enabled: true,
+      ),
+    ]);
+    expect(duplicate.success, isFalse);
+    expect(duplicate.failure, ServerDefinitionsApplyFailure.duplicateUrl);
+    expect(coordinator.servers.single.id, 'new');
+  });
+
+  test('identical replacement is typed no-op and retains probe state',
+      () async {
+    final coordinator =
+        ServerCoordinator(probe: (url) async => probeResult(url));
+    await coordinator.refresh();
+    final current = coordinator.servers;
+    final result = await coordinator.replaceServers(current);
+    expect(result.success, isTrue);
+    expect(result.changed, isFalse);
+    expect(coordinator.selectedCandidate?.id, 'fr-primary');
   });
 
   test('selection uses numeric priority rather than insertion order', () async {

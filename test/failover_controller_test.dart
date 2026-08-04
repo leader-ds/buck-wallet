@@ -320,4 +320,27 @@ void main() {
     expect(h.coordinator.selectedCandidate?.id, 'fr-secondary');
     expect(h.controller.lastTransitionResult?.targetUrl, secondaryUrl);
   });
+
+  test('definition replacement cannot transfer failures or trigger transition',
+      () async {
+    final h = Harness();
+    await h.refreshAndObserve();
+    await h.refreshAndObserve();
+    expect(h.controller.consecutiveFailedProbes, 2);
+
+    await h.coordinator.replaceServers(const [
+      ServerDefinition(
+        id: 'new-primary',
+        name: 'New Primary',
+        url: 'https://new.example:9067',
+        priority: 1,
+        enabled: true,
+      ),
+    ]);
+    expect(await h.observe(), isNull);
+    expect(h.controller.consecutiveFailedProbes, 0);
+    expect(h.switchCalls, 0);
+    expect(h.activeUrl, primaryUrl);
+    expect(h.controller.cooldown, const Duration(seconds: 60));
+  });
 }
