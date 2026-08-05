@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:warp_api/warp_api.dart';
 
 import 'appsettings.dart';
+import 'bootstrap/bootstrap_startup_composition.dart';
 import 'main.reflectable.dart';
 import 'coin/coins.dart';
 import './pages/utils.dart';
@@ -21,6 +22,7 @@ final GlobalKey<NavigatorState> navigatorKey = new GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  unawaited(bootstrapStartupIntegration.start());
   initializeReflectable();
   await restoreSettings();
   await initCoins();
