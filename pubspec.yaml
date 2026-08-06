@@ -34,6 +34,7 @@ dependencies:
       url: https://github.com/hhanh00/qr.flutter.git
       ref: 4bdb1126e553b474b80c8c91e9f9e43baf1e9c4e
   http: ^0.13.3
+  cryptography: ^2.9.0
   intl: ^0.18.0
   path: ^1.8.0
   easy_debounce: ^2.0.3
