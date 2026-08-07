@@ -1,6 +1,6 @@
 [submodule "native/zcash-sync"]
 	path = native/zcash-sync
-	url = https://github.com/hhanh00/zcash-sync.git
+	url = https://github.com/leader-ds/zcash-sync.git
 [submodule "native/zcash-params"]
 	path = native/zcash-params
 	url = https://github.com/hhanh00/zcash-params.git
