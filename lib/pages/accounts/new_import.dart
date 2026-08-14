@@ -173,7 +173,7 @@ class _NewImportAccountState extends State<NewImportAccountPage>
   _importLedger() async {
     try {
       final account =
-          await WarpApi.importFromLedger(aa.coin, nameController.text);
+          await WarpApi.importFromLedger(coin, nameController.text);
       setActiveAccount(coin, account);
     } on String catch (msg) {
       formKey.currentState!.fields['key']!.invalidate(msg);
