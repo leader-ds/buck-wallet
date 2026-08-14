@@ -222,7 +222,7 @@ class _QuickSendState extends State<QuickSendPage> with WithLoadingAnimation {
                 _pools,
                 coinSettings.replyUa,
                 appSettings.anchorOffset,
-                coinSettings.feeT,
+                coinSettings.feeTFor(aa.coin),
               ));
           GoRouter.of(context).push('/account/txplan?tab=account', extra: plan);
         } on String catch (e) {

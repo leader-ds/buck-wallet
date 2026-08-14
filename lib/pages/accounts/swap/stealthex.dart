@@ -280,8 +280,14 @@ class StealthExSummaryState extends State<StealthExSummaryPage>
           address: address,
           amount: stringToAmount(amount),
         ).toBytes());
-        final txPlan = await WarpApi.prepareTx(aa.coin, aa.id, [recipient], 1,
-            coinSettings.replyUa, appSettings.anchorOffset, coinSettings.feeT);
+        final txPlan = await WarpApi.prepareTx(
+            aa.coin,
+            aa.id,
+            [recipient],
+            1,
+            coinSettings.replyUa,
+            appSettings.anchorOffset,
+            coinSettings.feeTFor(aa.coin));
         GoRouter.of(context).push('/account/txplan?tab=more', extra: txPlan);
       } on String catch (e) {
         showMessageBox2(context, s.error, e);

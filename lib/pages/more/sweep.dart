@@ -130,7 +130,7 @@ class _SweepState extends State<SweepPage>
               _address ?? '',
               int.parse(indexController.text),
               30,
-              coinSettings.feeT);
+              coinSettings.feeTFor(aa.coin));
           GoRouter.of(context).push('/account/txplan?tab=more', extra: txPlan);
         } on String catch (e) {
           form.fields['seed']!.invalidate(e);
@@ -142,7 +142,11 @@ class _SweepState extends State<SweepPage>
       await load(() async {
         try {
           final txPlan = await WarpApi.sweepTransparent(aa.coin, aa.id,
-              latestHeight, sk, _pool, _address ?? '', coinSettings.feeT);
+              latestHeight,
+              sk,
+              _pool,
+              _address ?? '',
+              coinSettings.feeTFor(aa.coin));
           GoRouter.of(context).push('/account/txplan?tab=more', extra: txPlan);
         } on String catch (e) {
           form.fields['sk']!.invalidate(e);

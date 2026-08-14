@@ -70,7 +70,16 @@ extension CoinSettingsExtension on CoinSettings {
     WarpApi.setProperty(coin, 'settings', settings);
   }
 
-  FeeT get feeT => FeeT(scheme: manualFee ? 1 : 0, fee: fee.toInt());
+  FeeT get feeT => resolveFeeT(
+        manualFee: manualFee,
+        configuredFee: fee.toInt(),
+      );
+
+  FeeT feeTFor(int coin) => resolveFeeT(
+        manualFee: manualFee,
+        configuredFee: fee.toInt(),
+        fixedNetworkFee: coins[coin].fixedNetworkFee,
+      );
 
   String resolveBlockExplorer(int coin) {
     final explorers = coins[coin].blockExplorers;
@@ -78,6 +87,20 @@ extension CoinSettingsExtension on CoinSettings {
     if (idx >= 0) return explorers[idx];
     return explorer.customURL;
   }
+}
+
+FeeT resolveFeeT({
+  required bool manualFee,
+  required int configuredFee,
+  int? fixedNetworkFee,
+}) {
+  if (fixedNetworkFee != null) {
+    final effectiveFee = manualFee
+        ? m.max(configuredFee, fixedNetworkFee)
+        : fixedNetworkFee;
+    return FeeT(scheme: 1, fee: effectiveFee);
+  }
+  return FeeT(scheme: manualFee ? 1 : 0, fee: configuredFee);
 }
 
 extension CustomSendSettingsExtension on CustomSendSettings {

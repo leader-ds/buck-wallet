@@ -81,7 +81,7 @@ class _MultiPayState extends State<MultiPayPage> {
         7,
         coinSettings.replyUa,
         appSettings.anchorOffset,
-        coinSettings.feeT,
+        coinSettings.feeTFor(aa.coin),
       );
       GoRouter.of(context).push('/account/txplan?tab=more', extra: txPlan);
     } on String catch (e) {

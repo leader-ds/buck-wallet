@@ -33,6 +33,7 @@ abstract class CoinBase {
   bool get supportsLedger;
   List<double> get weights;
   List<String> get blockExplorers;
+  int? get fixedNetworkFee => null;
 
   void init(String dbDirPath) {
     dbDir = dbDirPath;
