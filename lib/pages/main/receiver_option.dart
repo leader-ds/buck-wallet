@@ -20,6 +20,48 @@ class ReceiverOption {
 
 typedef ReceiverAddressResolver = String Function(int addressMode);
 
+class ReceiverSelectionNotification {
+  const ReceiverSelectionNotification(this.generation, this.addressMode);
+
+  final int generation;
+  final int? addressMode;
+}
+
+class ReceiverSelectionCoordinator {
+  int? _currentAddressMode;
+  int _generation = 0;
+  bool _hasDelivered = false;
+  int? _lastDeliveredAddressMode;
+
+  int? get currentAddressMode => _currentAddressMode;
+
+  ReceiverSelectionNotification? update(
+    int? addressMode, {
+    bool notifyCurrent = false,
+  }) {
+    final changed = addressMode != _currentAddressMode;
+    _currentAddressMode = addressMode;
+    if (!changed && !notifyCurrent) return null;
+
+    return ReceiverSelectionNotification(++_generation, addressMode);
+  }
+
+  bool consume(ReceiverSelectionNotification notification) {
+    if (notification.generation != _generation ||
+        notification.addressMode != _currentAddressMode) {
+      return false;
+    }
+    if (_hasDelivered &&
+        notification.addressMode == _lastDeliveredAddressMode) {
+      return false;
+    }
+
+    _hasDelivered = true;
+    _lastDeliveredAddressMode = notification.addressMode;
+    return true;
+  }
+}
+
 List<ReceiverOption> buildReceiverOptions({
   required int availableMode,
   required bool supportsUa,

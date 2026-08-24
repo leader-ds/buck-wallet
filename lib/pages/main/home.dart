@@ -67,7 +67,7 @@ class _HomeState extends State<HomePageInner> {
                       children: [
                         AddressCarousel(
                           homeSelection: true,
-                          onAddressModeChanged: (m) =>
+                          onSelectionChanged: (m) =>
                               setState(() => addressMode = m),
                         ),
                         Gap(8),

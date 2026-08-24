@@ -17,6 +17,7 @@ import 'receiver_option.dart';
 
 class AddressCarousel extends StatefulWidget {
   final void Function(int mode)? onAddressModeChanged;
+  final ValueChanged<int?>? onSelectionChanged;
   final int? amount;
   final String? memo;
   final bool paymentURI;
@@ -29,6 +30,7 @@ class AddressCarousel extends StatefulWidget {
     this.homeSelection = false,
     this.initialAddressMode,
     this.onAddressModeChanged,
+    this.onSelectionChanged,
   });
 
   @override
@@ -40,6 +42,7 @@ class AddressCarouselState extends State<AddressCarousel> {
   int? selectedAddressMode;
   int index = 0;
   bool _refreshScheduled = false;
+  final _selectionCoordinator = ReceiverSelectionCoordinator();
   final carouselController = CarouselSliderController();
 
   @override
@@ -77,24 +80,48 @@ class AddressCarouselState extends State<AddressCarousel> {
         : options.indexWhere(
             (option) => option.addressMode == selected.addressMode,
           );
-    final selectionChanged = selected?.addressMode != selectedAddressMode;
     final pageChanged = nextIndex != index;
     receiverOptions = options;
     selectedAddressMode = selected?.addressMode;
     index = nextIndex;
 
-    final selectedMode = selected?.addressMode;
-    if ((notify || selectionChanged) && selectedMode != null) {
+    final notification = _selectionCoordinator.update(
+      selected?.addressMode,
+      notifyCurrent: notify,
+    );
+    if (notification != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        widget.onAddressModeChanged?.call(selectedMode);
+        if (!_isCurrentNotification(notification)) return;
+        if (!_selectionCoordinator.consume(notification)) return;
+        _notifyParent(notification.addressMode);
       });
     }
     if (pageChanged) {
+      final expectedMode = selected?.addressMode;
+      final expectedIndex = nextIndex;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || receiverOptions.isEmpty) return;
-        carouselController.jumpToPage(index);
+        if (!mounted || receiverOptions.isEmpty || expectedMode == null) return;
+        if (selectedAddressMode != expectedMode || index != expectedIndex)
+          return;
+        if (expectedIndex < 0 || expectedIndex >= receiverOptions.length)
+          return;
+        if (receiverOptions[expectedIndex].addressMode != expectedMode) return;
+        carouselController.jumpToPage(expectedIndex);
       });
+    }
+  }
+
+  bool _isCurrentNotification(ReceiverSelectionNotification notification) {
+    if (selectedAddressMode != notification.addressMode) return false;
+    if (notification.addressMode == null) return receiverOptions.isEmpty;
+    return optionForMode(receiverOptions, notification.addressMode) != null;
+  }
+
+  void _notifyParent(int? addressMode) {
+    widget.onSelectionChanged?.call(addressMode);
+    if (addressMode != null) {
+      widget.onAddressModeChanged?.call(addressMode);
     }
   }
 
@@ -148,11 +175,16 @@ class AddressCarouselState extends State<AddressCarousel> {
                 viewportFraction: 1.0,
                 onPageChanged: (i, reason) {
                   final option = receiverOptions[i];
-                  widget.onAddressModeChanged?.call(option.addressMode);
                   setState(() {
                     index = i;
                     selectedAddressMode = option.addressMode;
                   });
+                  final notification =
+                      _selectionCoordinator.update(option.addressMode);
+                  if (notification != null &&
+                      _selectionCoordinator.consume(notification)) {
+                    _notifyParent(option.addressMode);
+                  }
                 },
               ),
             ),
