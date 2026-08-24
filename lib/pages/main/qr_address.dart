@@ -12,6 +12,7 @@ import '../../appsettings.dart';
 import '../../coin/coins.dart';
 import '../../generated/intl/messages.dart';
 import '../utils.dart';
+import 'payment_payload.dart';
 
 class AddressCarousel extends StatefulWidget {
   final void Function(int mode)? onAddressModeChanged;
@@ -142,34 +143,38 @@ class _QRAddressState extends State<QRAddressWidget> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final a = widget.amount ?? 0;
     final image = aa.coin == 0
         ? const AssetImage('assets/branding/buck_logo_qr.png')
         : coins[aa.coin].image;
 
     return Observer(builder: (context) {
       aa.diversifiedAddress;
-      final uri = a != 0 || widget.memo?.isNotEmpty == true
-          ? WarpApi.makePaymentURI(
-              aa.coin, address, widget.amount!, widget.memo ?? '')
-          : address;
+      final result = paymentPayload;
+      final payload = result.payload;
       return Column(children: [
-        QrImage(
-          data: uri,
-          version: QrVersions.auto,
-          size: 200.0,
-          backgroundColor: Colors.white,
-          embeddedImage: image,
-        ),
+        if (result.isValid)
+          QrImage(
+            data: payload,
+            version: QrVersions.auto,
+            size: 200.0,
+            backgroundColor: Colors.white,
+            embeddedImage: image,
+          )
+        else
+          SizedBox(width: 200.0, height: 200.0),
         Gap(8),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(centerTrim(uri)),
+            Text(centerTrim(payload)),
             Padding(padding: EdgeInsets.all(4)),
-            IconButton.outlined(onPressed: addressCopy, icon: Icon(Icons.copy)),
+            IconButton.outlined(
+                onPressed: result.isValid ? () => addressCopy(payload) : null,
+                icon: Icon(Icons.copy)),
             Padding(padding: EdgeInsets.all(4)),
-            IconButton.outlined(onPressed: qrCode, icon: Icon(Icons.qr_code)),
+            IconButton.outlined(
+                onPressed: result.isValid ? () => qrCode(payload) : null,
+                icon: Icon(Icons.qr_code)),
           ],
         ),
         Text(addressType, style: t.textTheme.labelSmall)
@@ -209,28 +214,28 @@ class _QRAddressState extends State<QRAddressWidget> {
     return WarpApi.getAddress(aa.coin, aa.id, uaType);
   }
 
-  String get uri {
-    final a = widget.amount ?? 0;
-    final uri = a != 0
-        ? WarpApi.makePaymentURI(
-            aa.coin, address, widget.amount!, widget.memo ?? '')
-        : address;
-    return uri;
-  }
+  PaymentPayloadResult get paymentPayload => PaymentPayloadResult.compute(
+        address: address,
+        amount: widget.amount,
+        memo: widget.memo,
+        memoCapable: widget.addressMode != 1,
+        generatePaymentUri: (address, amount, memo) =>
+            WarpApi.makePaymentURI(aa.coin, address, amount, memo),
+      );
 
-  addressCopy() {
+  addressCopy(String payload) {
     final s = S.of(context);
-    Clipboard.setData(ClipboardData(text: uri));
+    Clipboard.setData(ClipboardData(text: payload));
     showSnackBar(s.addressCopiedToClipboard);
   }
 
-  qrCode() {
+  qrCode(String payload) {
     if (widget.paymentURI)
       GoRouter.of(context).push('/account/pay_uri');
     else {
       final qrUri =
           Uri(path: '/showqr', queryParameters: {'title': widget.memo ?? ''});
-      GoRouter.of(context).push(qrUri.toString(), extra: uri);
+      GoRouter.of(context).push(qrUri.toString(), extra: payload);
     }
   }
 }
