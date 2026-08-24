@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../appsettings.dart';
 import '../../store2.dart';
 import '../../accounts.dart';
-import '../../coin/coins.dart';
 import '../utils.dart';
 import 'balance.dart';
 import 'sync_status.dart';
@@ -15,10 +14,12 @@ import 'qr_address.dart';
 class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Observer(builder: (context) {
-      final key = ValueKey(aaSequence.seqno);
-      return HomePageInner(key: key);
-    });
+    return Observer(
+      builder: (context) {
+        final key = ValueKey(aaSequence.seqno);
+        return HomePageInner(key: key);
+      },
+    );
   }
 }
 
@@ -30,7 +31,7 @@ class HomePageInner extends StatefulWidget {
 
 class _HomeState extends State<HomePageInner> {
   final key = GlobalKey<BalanceState>();
-  int addressMode = coins[aa.coin].defaultAddrMode;
+  int? addressMode;
 
   @override
   void initState() {
@@ -41,48 +42,53 @@ class _HomeState extends State<HomePageInner> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        floatingActionButton: GestureDetector(
-            onLongPress: () => _send(true),
-            child: FloatingActionButton(
-              onPressed: () => _send(false),
-              child: Icon(Icons.send),
-            )),
-        body: SingleChildScrollView(
-          child: Center(
-            child: Observer(
-              builder: (context) {
-                aaSequence.seqno;
-                aa.poolBalances;
-                syncStatus2.changed;
+      floatingActionButton: GestureDetector(
+        onLongPress: () => _send(true),
+        child: FloatingActionButton(
+          onPressed: () => _send(false),
+          child: Icon(Icons.send),
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: Center(
+          child: Observer(
+            builder: (context) {
+              aaSequence.seqno;
+              aa.poolBalances;
+              syncStatus2.changed;
 
-                return Column(
-                  children: [
-                    SyncStatusWidget(),
-                    Gap(8),
-                    Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        child: Column(children: [
-                          AddressCarousel(
-                            onAddressModeChanged: (m) =>
-                                setState(() => addressMode = m),
+              return Column(
+                children: [
+                  SyncStatusWidget(),
+                  Gap(8),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      children: [
+                        AddressCarousel(
+                          homeSelection: true,
+                          onAddressModeChanged: (m) =>
+                              setState(() => addressMode = m),
+                        ),
+                        Gap(8),
+                        if (addressMode != null)
+                          BalanceWidget(addressMode!, key: key),
+                        Gap(16),
+                        if (!aa.saved)
+                          OutlinedButton(
+                            onPressed: _backup,
+                            child: Text('Backup recommended'),
                           ),
-                          Gap(8),
-                          BalanceWidget(
-                            addressMode,
-                            key: key,
-                          ),
-                          Gap(16),
-                          if (!aa.saved)
-                            OutlinedButton(
-                                onPressed: _backup,
-                                child: Text('Backup recommended'))
-                        ])),
-                  ],
-                );
-              },
-            ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
-        ));
+        ),
+      ),
+    );
   }
 
   _send(bool custom) async {

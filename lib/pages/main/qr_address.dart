@@ -13,114 +13,197 @@ import '../../coin/coins.dart';
 import '../../generated/intl/messages.dart';
 import '../utils.dart';
 import 'payment_payload.dart';
+import 'receiver_option.dart';
 
 class AddressCarousel extends StatefulWidget {
   final void Function(int mode)? onAddressModeChanged;
   final int? amount;
   final String? memo;
   final bool paymentURI;
-  AddressCarousel(
-      {this.amount,
-      this.memo,
-      this.paymentURI = true,
-      this.onAddressModeChanged});
+  final bool homeSelection;
+  final int? initialAddressMode;
+  AddressCarousel({
+    this.amount,
+    this.memo,
+    this.paymentURI = true,
+    this.homeSelection = false,
+    this.initialAddressMode,
+    this.onAddressModeChanged,
+  });
 
   @override
   State<StatefulWidget> createState() => AddressCarouselState();
 }
 
 class AddressCarouselState extends State<AddressCarousel> {
-  final int availableMode = WarpApi.getAvailableAddrs(aa.coin, aa.id);
-  List<int> addressModes = [];
-  List<Widget> addresses = [];
+  List<ReceiverOption> receiverOptions = const [];
+  int? selectedAddressMode;
   int index = 0;
+  bool _refreshScheduled = false;
   final carouselController = CarouselSliderController();
 
   @override
   void initState() {
     super.initState();
-    updateAddresses();
+    selectedAddressMode = widget.initialAddressMode;
+    _reconcileReceiverOptions(notify: true);
   }
 
-  void updateAddresses() {
-    addresses.clear();
-    addressModes.clear();
-
+  List<ReceiverOption> _buildReceiverOptions() {
     final c = coins[aa.coin];
-    for (var i = 0; i < 5; i++) {
-      final am = (c.defaultAddrMode - i) % 5;
-      if (am == 0 && !c.supportsUA) continue;
-      if (am == c.defaultAddrMode ||
-          am == 4 ||
-          availableMode & (1 << (am - 1)) != 0) {
-        final address = QRAddressWidget(
-          am,
-          uaType: coinSettings.uaType,
-          amount: widget.amount,
-          memo: widget.memo,
-          paymentURI: widget.paymentURI,
-        );
-        addresses.add(address);
-        addressModes.add(am);
-      }
+    final availableMode = WarpApi.getAvailableAddrs(aa.coin, aa.id);
+    return buildReceiverOptions(
+      availableMode: availableMode,
+      supportsUa: c.supportsUA,
+      addressForMode: _addressForMode,
+    );
+  }
+
+  String _addressForMode(int addressMode) {
+    if (aa.id == 0) return '';
+    if (addressMode == 4) return aa.diversifiedAddress;
+    final uaType =
+        addressMode == 0 ? coinSettings.uaType : 1 << (addressMode - 1);
+    return WarpApi.getAddress(aa.coin, aa.id, uaType);
+  }
+
+  void _reconcileReceiverOptions({bool notify = false}) {
+    final options = _buildReceiverOptions();
+    final selected = widget.homeSelection
+        ? reconcileHomeReceiver(options, selectedAddressMode)
+        : reconcilePaymentReceiver(options, selectedAddressMode);
+    final nextIndex = selected == null
+        ? 0
+        : options.indexWhere(
+            (option) => option.addressMode == selected.addressMode,
+          );
+    final selectionChanged = selected?.addressMode != selectedAddressMode;
+    final pageChanged = nextIndex != index;
+    receiverOptions = options;
+    selectedAddressMode = selected?.addressMode;
+    index = nextIndex;
+
+    final selectedMode = selected?.addressMode;
+    if ((notify || selectionChanged) && selectedMode != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.onAddressModeChanged?.call(selectedMode);
+      });
+    }
+    if (pageChanged) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || receiverOptions.isEmpty) return;
+        carouselController.jumpToPage(index);
+      });
     }
   }
 
   @override
   void didUpdateWidget(AddressCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    updateAddresses();
+    _reconcileReceiverOptions();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      children: [
-        CarouselSlider(
-          carouselController: carouselController,
-          items: addresses,
-          options: CarouselOptions(
-            height: 280,
-            viewportFraction: 1.0,
-            onPageChanged: (i, reason) {
-              widget.onAddressModeChanged?.call(addressModes[i]);
-              setState(() => index = i);
-            },
-          ),
-        ),
-        Gap(8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: addresses
-              .asMap()
-              .entries
-              .map(
-                (kv) => GestureDetector(
-                  onTap: () {
-                    carouselController.animateToPage(kv.key);
-                  },
-                  child: Container(
-                    width: 12.0,
-                    height: 12.0,
-                    margin:
-                        EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-                    decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: theme.primaryColor
-                            .withOpacity(kv.key == index ? 0.9 : 0.4)),
-                  ),
-                ),
-              )
-              .toList(),
-        ),
-      ],
+    return Observer(
+      builder: (context) {
+        aaSequence.seqno;
+        aaSequence.settingsSeqno;
+        aa.diversifiedAddress;
+        final nextOptions = _buildReceiverOptions();
+        final optionsChanged = !_sameOptions(receiverOptions, nextOptions);
+        if (optionsChanged && !_refreshScheduled) {
+          _refreshScheduled = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            setState(() {
+              _refreshScheduled = false;
+              _reconcileReceiverOptions();
+            });
+          });
+        }
+        final addresses = receiverOptions
+            .map(
+              (option) => QRAddressWidget(
+                option.addressMode,
+                address: option.address,
+                uaType: coinSettings.uaType,
+                amount: widget.amount,
+                memo: widget.memo,
+                paymentURI: widget.paymentURI,
+              ),
+            )
+            .toList();
+        if (addresses.isEmpty) return const SizedBox(height: 280);
+        return Column(
+          children: [
+            CarouselSlider(
+              carouselController: carouselController,
+              items: addresses,
+              options: CarouselOptions(
+                height: 280,
+                initialPage: index,
+                viewportFraction: 1.0,
+                onPageChanged: (i, reason) {
+                  final option = receiverOptions[i];
+                  widget.onAddressModeChanged?.call(option.addressMode);
+                  setState(() {
+                    index = i;
+                    selectedAddressMode = option.addressMode;
+                  });
+                },
+              ),
+            ),
+            Gap(8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: addresses
+                  .asMap()
+                  .entries
+                  .map(
+                    (kv) => GestureDetector(
+                      onTap: () {
+                        carouselController.animateToPage(kv.key);
+                      },
+                      child: Container(
+                        width: 12.0,
+                        height: 12.0,
+                        margin: EdgeInsets.symmetric(
+                          vertical: 8.0,
+                          horizontal: 4.0,
+                        ),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: theme.primaryColor.withOpacity(
+                            kv.key == index ? 0.9 : 0.4,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        );
+      },
     );
+  }
+
+  bool _sameOptions(List<ReceiverOption> a, List<ReceiverOption> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].addressMode != b[i].addressMode || a[i].address != b[i].address)
+        return false;
+    }
+    return true;
   }
 }
 
 class QRAddressWidget extends StatefulWidget {
   final int addressMode;
+  final String? address;
   final int? amount;
   final String? memo;
   final int uaType;
@@ -129,6 +212,7 @@ class QRAddressWidget extends StatefulWidget {
   QRAddressWidget(
     this.addressMode, {
     super.key,
+    this.address,
     required this.uaType,
     this.amount,
     this.memo,
@@ -147,39 +231,45 @@ class _QRAddressState extends State<QRAddressWidget> {
         ? const AssetImage('assets/branding/buck_logo_qr.png')
         : coins[aa.coin].image;
 
-    return Observer(builder: (context) {
-      aa.diversifiedAddress;
-      final result = paymentPayload;
-      final payload = result.payload;
-      return Column(children: [
-        if (result.isValid)
-          QrImage(
-            data: payload,
-            version: QrVersions.auto,
-            size: 200.0,
-            backgroundColor: Colors.white,
-            embeddedImage: image,
-          )
-        else
-          SizedBox(width: 200.0, height: 200.0),
-        Gap(8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+    return Observer(
+      builder: (context) {
+        aa.diversifiedAddress;
+        final result = paymentPayload;
+        final payload = result.payload;
+        return Column(
           children: [
-            Text(centerTrim(payload)),
-            Padding(padding: EdgeInsets.all(4)),
-            IconButton.outlined(
-                onPressed: result.isValid ? () => addressCopy(payload) : null,
-                icon: Icon(Icons.copy)),
-            Padding(padding: EdgeInsets.all(4)),
-            IconButton.outlined(
-                onPressed: result.isValid ? () => qrCode(payload) : null,
-                icon: Icon(Icons.qr_code)),
+            if (result.isValid)
+              QrImage(
+                data: payload,
+                version: QrVersions.auto,
+                size: 200.0,
+                backgroundColor: Colors.white,
+                embeddedImage: image,
+              )
+            else
+              SizedBox(width: 200.0, height: 200.0),
+            Gap(8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(centerTrim(payload)),
+                Padding(padding: EdgeInsets.all(4)),
+                IconButton.outlined(
+                  onPressed: result.isValid ? () => addressCopy(payload) : null,
+                  icon: Icon(Icons.copy),
+                ),
+                Padding(padding: EdgeInsets.all(4)),
+                IconButton.outlined(
+                  onPressed: result.isValid ? () => qrCode(payload) : null,
+                  icon: Icon(Icons.qr_code),
+                ),
+              ],
+            ),
+            Text(addressType, style: t.textTheme.labelSmall),
           ],
-        ),
-        Text(addressType, style: t.textTheme.labelSmall)
-      ]);
-    });
+        );
+      },
+    );
   }
 
   String get addressType {
@@ -199,6 +289,7 @@ class _QRAddressState extends State<QRAddressWidget> {
   }
 
   String get address {
+    if (widget.address != null) return widget.address!;
     if (aa.id == 0) return '';
     final uaType;
     switch (widget.addressMode) {
@@ -233,8 +324,10 @@ class _QRAddressState extends State<QRAddressWidget> {
     if (widget.paymentURI)
       GoRouter.of(context).push('/account/pay_uri');
     else {
-      final qrUri =
-          Uri(path: '/showqr', queryParameters: {'title': widget.memo ?? ''});
+      final qrUri = Uri(
+        path: '/showqr',
+        queryParameters: {'title': widget.memo ?? ''},
+      );
       GoRouter.of(context).push(qrUri.toString(), extra: payload);
     }
   }
