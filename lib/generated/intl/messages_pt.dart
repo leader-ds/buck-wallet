@@ -782,7 +782,7 @@ class SPt extends S {
   String get views => 'Visualizações';
 
   @override
-  String get welcomeToYwallet => 'Bem-vindo ao BUCK Wallet';
+  String get welcomeToBuckWallet => 'Bem-vindo ao BUCK Wallet';
 
   @override
   String get wifi => 'Wi-Fi';

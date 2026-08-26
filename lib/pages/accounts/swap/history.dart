@@ -1,4 +1,4 @@
-import 'package:YWallet/pages/utils.dart';
+import 'package:buck_wallet/pages/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
@@ -53,7 +53,8 @@ class SwapHistoryState extends State<SwapHistoryPage>
                             Text(swap.provider!, style: TextStyle(color: p)),
                             Text(swap.providerId!,
                                 style: TextStyle(fontWeight: FontWeight.bold)),
-                            Text(timeago.format(DateTime.fromMillisecondsSinceEpoch(
+                            Text(timeago.format(
+                                DateTime.fromMillisecondsSinceEpoch(
                                     swap.timestamp * 1000))),
                           ]),
                       Divider(),

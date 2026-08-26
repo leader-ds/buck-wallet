@@ -1,7 +1,7 @@
 import "coin.dart";
 
 class Coin {
-  String app = "YWalletTest";
+  String app = "BUCK Wallet Test";
   String symbol = "\u24E8";
   String currency = "ycash";
   String ticker = "YEC";

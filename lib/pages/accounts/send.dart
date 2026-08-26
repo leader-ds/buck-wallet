@@ -1,4 +1,4 @@
-import 'package:YWallet/main.dart';
+import 'package:buck_wallet/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';

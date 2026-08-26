@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:YWallet/pages/main/payment_payload.dart';
+import 'package:buck_wallet/pages/main/payment_payload.dart';
 
 void main() {
   group('PaymentPayloadResult', () {
@@ -21,13 +21,14 @@ void main() {
       String? memo,
       bool memoCapable = true,
       PaymentUriGenerator? overrideGenerator,
-    }) => PaymentPayloadResult.compute(
-      address: address,
-      amount: amount,
-      memo: memo,
-      memoCapable: memoCapable,
-      generatePaymentUri: overrideGenerator ?? generator,
-    );
+    }) =>
+        PaymentPayloadResult.compute(
+          address: address,
+          amount: amount,
+          memo: memo,
+          memoCapable: memoCapable,
+          generatePaymentUri: overrideGenerator ?? generator,
+        );
 
     void expectSynchronized(PaymentPayloadResult result) {
       expect(result.isValid, isTrue);

@@ -782,7 +782,7 @@ class SEn extends S {
   String get views => 'Views';
 
   @override
-  String get welcomeToYwallet => 'Welcome to BUCK Wallet';
+  String get welcomeToBuckWallet => 'Welcome to BUCK Wallet';
 
   @override
   String get wifi => 'WiFi';

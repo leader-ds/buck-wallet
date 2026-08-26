@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:YWallet/sync_lifecycle_coordinator.dart';
+import 'package:buck_wallet/sync_lifecycle_coordinator.dart';
 
 class FakeAccount {
   final int coin;

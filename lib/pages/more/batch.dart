@@ -108,7 +108,7 @@ class _BatchBackupState extends State<BatchBackupPage> {
     final s = S.of(context);
     final tempDir = await getTemporaryDirectory();
     final path = isMobile()
-        ? await getTemporaryPath('YWallet.age')
+        ? await getTemporaryPath('BUCK-Wallet.age')
         : await FilePicker.platform.saveFile(dialogTitle: s.fullBackup);
     if (path != null) {
       try {

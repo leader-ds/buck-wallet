@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:YWallet/pages/main/receiver_option.dart';
+import 'package:buck_wallet/pages/main/receiver_option.dart';
 
 void main() {
   List<ReceiverOption> build({

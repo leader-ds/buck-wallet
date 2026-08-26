@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:YWallet/pages/utils.dart';
-import 'package:YWallet/router.dart';
-import 'package:YWallet/store2.dart';
+import 'package:buck_wallet/pages/utils.dart';
+import 'package:buck_wallet/router.dart';
+import 'package:buck_wallet/store2.dart';
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';

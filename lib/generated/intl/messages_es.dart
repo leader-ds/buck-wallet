@@ -782,7 +782,7 @@ class SEs extends S {
   String get views => 'Vistas';
 
   @override
-  String get welcomeToYwallet => 'Bienvenido a BUCK Wallet';
+  String get welcomeToBuckWallet => 'Bienvenido a BUCK Wallet';
 
   @override
   String get wifi => 'WiFi';

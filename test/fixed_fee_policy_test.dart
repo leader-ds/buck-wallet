@@ -1,5 +1,5 @@
-import 'package:YWallet/appsettings.dart';
-import 'package:YWallet/coin/buck.dart';
+import 'package:buck_wallet/appsettings.dart';
+import 'package:buck_wallet/coin/buck.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

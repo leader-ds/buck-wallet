@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:YWallet/main.dart';
+import 'package:buck_wallet/main.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:binary/binary.dart';
 import 'package:collection/collection.dart';

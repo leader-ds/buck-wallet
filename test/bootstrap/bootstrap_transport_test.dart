@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:YWallet/bootstrap/bootstrap_transport.dart';
+import 'package:buck_wallet/bootstrap/bootstrap_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class RecordedRequest {

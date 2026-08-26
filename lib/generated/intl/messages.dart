@@ -1605,11 +1605,11 @@ abstract class S {
   /// **'Views'**
   String get views;
 
-  /// No description provided for @welcomeToYwallet.
+  /// No description provided for @welcomeToBuckWallet.
   ///
   /// In en, this message translates to:
   /// **'Welcome to BUCK Wallet'**
-  String get welcomeToYwallet;
+  String get welcomeToBuckWallet;
 
   /// No description provided for @wifi.
   ///

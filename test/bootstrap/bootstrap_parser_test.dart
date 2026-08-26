@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:YWallet/bootstrap/bootstrap_parser.dart';
+import 'package:buck_wallet/bootstrap/bootstrap_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Map<String, dynamic> server({

@@ -782,7 +782,7 @@ class SFr extends S {
   String get views => 'Vues';
 
   @override
-  String get welcomeToYwallet => 'Bienvenue sur BUCK Wallet';
+  String get welcomeToBuckWallet => 'Bienvenue sur BUCK Wallet';
 
   @override
   String get wifi => 'Wi-Fi';
