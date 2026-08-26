@@ -98,32 +98,37 @@ class _QuickSendState extends State<QuickSendPage> with WithLoadingAnimation {
               onPressed: _toggleCustom,
               icon: Icon(Icons.tune),
             ),
-            IconButton(
-              onPressed: send,
-              icon: Icon(widget.single ? Icons.send : Icons.add),
-            )
           ],
         ),
         body: wrapWithLoading(SingleChildScrollView(
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.only(left: 16, right: 2),
             child: FormBuilder(
               key: formKey,
               child: Column(
                 children: [
-                  InputTextQR(
-                    _address,
-                    key: addressKey,
-                    label: s.address,
-                    lines: 4,
-                    onChanged: _onAddress,
-                    validator:
-                        composeOr([addressValidator, paymentURIValidator]),
-                    buttonsBuilder: (context, {Function(String)? onChanged}) =>
-                        _extraAddressButtons(
-                      context,
-                      custom,
-                      onChanged: onChanged,
+                  IconButtonTheme(
+                    data: const IconButtonThemeData(
+                      style: ButtonStyle(
+                        fixedSize: WidgetStatePropertyAll(Size(44, 48)),
+                        padding: WidgetStatePropertyAll(EdgeInsets.zero),
+                      ),
+                    ),
+                    child: InputTextQR(
+                      _address,
+                      key: addressKey,
+                      label: s.address,
+                      lines: 4,
+                      onChanged: _onAddress,
+                      validator:
+                          composeOr([addressValidator, paymentURIValidator]),
+                      buttonsBuilder: (context,
+                              {Function(String)? onChanged}) =>
+                          _extraAddressButtons(
+                        context,
+                        custom,
+                        onChanged: onChanged,
+                      ),
                     ),
                   ),
                   Gap(8),
@@ -156,7 +161,19 @@ class _QuickSendState extends State<QuickSendPage> with WithLoadingAnimation {
                     canDeductFee: widget.single,
                     custom: custom,
                   ),
-                  Gap(8),
+                  const Gap(12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: buckCherryRed,
+                      ),
+                      onPressed: send,
+                      icon: Icon(widget.single ? Icons.send : Icons.add),
+                      label: Text(widget.single ? s.send : s.add),
+                    ),
+                  ),
+                  const Gap(8),
                   if (isShielded && customSendSettings.memo)
                     InputMemo(
                       _memo,
@@ -177,21 +194,26 @@ class _QuickSendState extends State<QuickSendPage> with WithLoadingAnimation {
     return [
       if (!custom || customSendSettings.contacts)
         IconButton(
-            onPressed: () async {
-              final c = await GoRouter.of(context)
-                  .push<Contact>('/account/quick_send/contacts');
-              c?.let((c) => onChanged?.call(c.address!));
-            },
-            icon: FaIcon(FontAwesomeIcons.addressBook)),
-      Gap(8),
+          onPressed: () async {
+            final c = await GoRouter.of(context)
+                .push<Contact>('/account/quick_send/contacts');
+            c?.let((c) => onChanged?.call(c.address!));
+          },
+          icon: const FaIcon(FontAwesomeIcons.addressBook),
+        ),
+      const Gap(8),
       if (!custom || customSendSettings.accounts)
         IconButton(
-            onPressed: () async {
-              final a = await GoRouter.of(context)
-                  .push<Account>('/account/quick_send/accounts');
-              a?.let((a) => onChanged?.call(a.address!));
-            },
-            icon: FaIcon(FontAwesomeIcons.users)),
+          onPressed: () async {
+            final a = await GoRouter.of(context)
+                .push<Account>('/account/quick_send/accounts');
+            a?.let((a) => onChanged?.call(a.address!));
+          },
+          icon: Transform.translate(
+            offset: const Offset(-1, 0),
+            child: const FaIcon(FontAwesomeIcons.users),
+          ),
+        ),
     ];
   }
 
@@ -271,9 +293,8 @@ class _QuickSendState extends State<QuickSendPage> with WithLoadingAnimation {
       _pools = 1;
       poolKey.currentState?.setPools(1);
     } on String {}
-    final receivers = address.isNotEmpty
-        ? WarpApi.receiversOfAddress(aa.coin, address2)
-        : 0;
+    final receivers =
+        address.isNotEmpty ? WarpApi.receiversOfAddress(aa.coin, address2) : 0;
     isShielded = receivers & 6 != 0;
     addressPools = receivers & coinSettings.receipientPools;
     rp = addressPools;

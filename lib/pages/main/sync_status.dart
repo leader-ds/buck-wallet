@@ -68,9 +68,9 @@ class SyncStatusState extends State<SyncStatusWidget> {
     final syncedHeight = syncStatus2.syncedHeight;
     final text = getSyncText(syncedHeight);
     final syncing = syncStatus2.syncing;
-    final syncStyle = syncing
-        ? t.textTheme.bodySmall!
-        : t.textTheme.bodyMedium!.apply(color: t.primaryColor);
+    final syncStyle =
+        (syncing ? t.textTheme.bodySmall! : t.textTheme.bodyMedium!)
+            .apply(color: buckCherryRed);
     final Widget inner = GestureDetector(
         onTap: _onSync,
         child: ClipRRect(
@@ -81,13 +81,15 @@ class SyncStatusState extends State<SyncStatusWidget> {
                 child: Text(text, style: syncStyle))));
     final value = syncStatus2.eta.progress?.let((x) => x.toDouble() / 100.0);
     return SizedBox(
-      height: 50,
+      height: 34,
       child: Stack(
         children: <Widget>[
           if (value != null)
             SizedBox.expand(
               child: LinearProgressIndicator(
                 value: value,
+                color: buckCherryRed,
+                valueColor: const AlwaysStoppedAnimation<Color>(buckCherryRed),
               ),
             ),
           Center(child: inner),

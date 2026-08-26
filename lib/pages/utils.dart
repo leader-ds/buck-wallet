@@ -42,6 +42,7 @@ import 'widgets.dart';
 var logger = Logger();
 
 const APP_NAME = "BUCK Wallet";
+const buckCherryRed = Color(0xFFD74546);
 const ZECUNIT = 100000000.0;
 const ZECUNIT_INT = 100000000;
 const MAX_PRECISION = 8;
@@ -221,7 +222,7 @@ Future<bool> authenticate(BuildContext context, String reason) async {
   final localAuth = LocalAuthentication();
   try {
     final bool didAuthenticate = await localAuth.authenticate(
-          localizedReason: reason, options: AuthenticationOptions());
+        localizedReason: reason, options: AuthenticationOptions());
     if (didAuthenticate) {
       return true;
     }

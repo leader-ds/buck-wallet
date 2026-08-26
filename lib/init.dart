@@ -33,7 +33,12 @@ Future<void> restoreWindow() async {
   final prefs = await SharedPreferences.getInstance();
   final width = prefs.getDouble('width');
   final height = prefs.getDouble('height');
-  final size = width != null && height != null ? Size(width, height) : null;
+  const defaultWindowsSize = Size(1280, 720);
+  final size = Platform.isWindows
+      ? Size(width ?? defaultWindowsSize.width, defaultWindowsSize.height)
+      : width != null && height != null
+          ? Size(width, height)
+          : null;
   WindowOptions windowOptions = WindowOptions(
     center: true,
     size: size,

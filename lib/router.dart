@@ -392,8 +392,6 @@ class _ScaffoldBar extends State<ScaffoldBar> {
         onPopInvoked: _onPop,
         child: Scaffold(
           appBar: AppBar(
-            title: Text('BUCK Wallet'),
-            centerTitle: true,
             actions: [
               IconButton(onPressed: help, icon: Icon(Icons.help)),
               IconButton(onPressed: settings, icon: Icon(Icons.settings)),
@@ -401,6 +399,8 @@ class _ScaffoldBar extends State<ScaffoldBar> {
           ),
           bottomNavigationBar: BottomNavigationBar(
             type: BottomNavigationBarType.fixed,
+            selectedItemColor: buckCherryRed,
+            selectedIconTheme: const IconThemeData(color: buckCherryRed),
             items: [
               BottomNavigationBarItem(
                   icon: Icon(Icons.account_balance), label: s.balance),

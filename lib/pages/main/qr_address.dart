@@ -133,7 +133,6 @@ class AddressCarouselState extends State<AddressCarousel> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Observer(
       builder: (context) {
         aaSequence.seqno;
@@ -163,14 +162,14 @@ class AddressCarouselState extends State<AddressCarousel> {
               ),
             )
             .toList();
-        if (addresses.isEmpty) return const SizedBox(height: 280);
+        if (addresses.isEmpty) return const SizedBox(height: 286);
         return Column(
           children: [
             CarouselSlider(
               carouselController: carouselController,
               items: addresses,
               options: CarouselOptions(
-                height: 280,
+                height: 286,
                 initialPage: index,
                 viewportFraction: 1.0,
                 onPageChanged: (i, reason) {
@@ -188,7 +187,7 @@ class AddressCarouselState extends State<AddressCarousel> {
                 },
               ),
             ),
-            Gap(8),
+            const Gap(2),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: addresses
@@ -208,7 +207,7 @@ class AddressCarouselState extends State<AddressCarousel> {
                         ),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: theme.primaryColor.withOpacity(
+                          color: buckCherryRed.withOpacity(
                             kv.key == index ? 0.9 : 0.4,
                           ),
                         ),
@@ -259,9 +258,6 @@ class _QRAddressState extends State<QRAddressWidget> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final image = aa.coin == 0
-        ? const AssetImage('assets/branding/buck_logo_qr.png')
-        : coins[aa.coin].image;
 
     return Observer(
       builder: (context) {
@@ -274,26 +270,37 @@ class _QRAddressState extends State<QRAddressWidget> {
               QrImage(
                 data: payload,
                 version: QrVersions.auto,
-                size: 200.0,
+                size: 184.0,
                 backgroundColor: Colors.white,
-                embeddedImage: image,
               )
             else
-              SizedBox(width: 200.0, height: 200.0),
-            Gap(8),
+              const SizedBox(width: 184.0, height: 184.0),
+            const Gap(6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: SelectableText(
+                payload,
+                textAlign: TextAlign.center,
+                maxLines: 3,
+                style: t.textTheme.bodySmall,
+              ),
+            ),
+            const Gap(2),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(centerTrim(payload)),
-                Padding(padding: EdgeInsets.all(4)),
                 IconButton.outlined(
+                  tooltip: S.of(context).copy,
+                  style: IconButton.styleFrom(foregroundColor: buckCherryRed),
                   onPressed: result.isValid ? () => addressCopy(payload) : null,
-                  icon: Icon(Icons.copy),
+                  icon: const Icon(Icons.copy),
                 ),
-                Padding(padding: EdgeInsets.all(4)),
+                const Gap(8),
                 IconButton.outlined(
+                  tooltip: S.of(context).qr,
+                  style: IconButton.styleFrom(foregroundColor: buckCherryRed),
                   onPressed: result.isValid ? () => qrCode(payload) : null,
-                  icon: Icon(Icons.qr_code),
+                  icon: const Icon(Icons.qr_code),
                 ),
               ],
             ),
