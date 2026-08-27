@@ -12,6 +12,7 @@ import 'coin/coins.dart';
 import './pages/utils.dart';
 
 import 'init.dart';
+import 'windows_settings_migration.dart';
 
 const ZECUNIT = 100000000.0;
 // ignore: non_constant_identifier_names
@@ -24,6 +25,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   unawaited(bootstrapStartupIntegration.start());
   initializeReflectable();
+  await migrateLegacyWindowsSettings(log: print);
   await restoreSettings();
   await initCoins();
   await restoreWindow();
