@@ -92,9 +92,9 @@ BEGIN
             VALUE "CompanyName", "BUCK" "\0"
             VALUE "FileDescription", "BUCK Wallet" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "BUCK Wallet" "\0"
+            VALUE "InternalName", "buck-wallet" "\0"
             VALUE "LegalCopyright", "Copyright © BUCK" "\0"
-            VALUE "OriginalFilename", "ywallet.exe" "\0"
+            VALUE "OriginalFilename", "buck-wallet.exe" "\0"
             VALUE "ProductName", "BUCK Wallet" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
