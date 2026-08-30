@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "policy_revision": "01H-P4",
+  "repository": "leader-ds/buck-wallet",
+  "canonical_branch": "security/curated-stage6r-baseline",
+  "baseline_sha": "138ed6057bbdd4a9b2af5a6a4d04a4a8e7775632",
+  "authority": {
+    "wallet": "leader-ds/buck-wallet",
+    "core": "leader-ds/buck"
+  },
+  "human_manifests": [
+    { "path": "docs/security/SOURCE_AUTHORITY_AND_PRESERVATION.md", "sha256": "efcdf7a7f0cb1809a040715b1fade8a3580706f639a48e620299cbed1d1f89f7" },
+    { "path": "docs/security/WINDOWS_REPRODUCIBLE_TOOLCHAIN.md", "sha256": "d501f73d88d01945a58cce59fdc3bac8c613cb7b08ac3f9e5f190aee2ecda492" }
+  ],
+  "history_anchors": [
+    "78c5fcf4cd67ba68a0f2d07983ba09b3110318a3",
+    "31be154d582cf33f7e1f0ee354872502c690bf80",
+    "b22bd83fc7e083841fe56b8be0caaf1bcc9a7eba",
+    "8623d762e42747366840ccaf05043bf7ec6ed351",
+    "9b99be72742eeb63a48cf7d1871e316a7997b9ee",
+    "6583b7bff2721425ce34514e4dcf5a82aff3acb8",
+    "9ec98edbd4ce1afd697fa12163f23035c501914a",
+    "3c86120be5c796eb5767d8ff772909a2e728b02d",
+    "138ed6057bbdd4a9b2af5a6a4d04a4a8e7775632"
+  ],
+  "flutter": { "version": "3.24.5", "framework_sha": "dec2ee5c1f98f8e84a7d5380c05eb8a3d0a81668", "engine_sha": "a18df97ca57a249df5d8d68cd0820600223ce262", "preferred_local_root": "C:\\src\\flutter_3245" },
+  "dart": { "version": "3.5.4" },
+  "pub": { "files": [
+    { "path": "pubspec.yaml", "sha256": "beb5294fb9eb7391b642f98b26fa0ec6193238c58c3a9d6c5027cdae9f1d9f0f" },
+    { "path": "pubspec.lock", "sha256": "5aeac11a4d8d6dae061de23af09cab7ba5181b64817fe759ab7af00bfaeda1ab" },
+    { "path": "packages/warp_api_ffi/pubspec.yaml", "sha256": "f58b2c966f60e4f2aa3dbd24bc88592be7d90ea7c62b8e7acc0e079903950135" },
+    { "path": "packages/warp_api_ffi/pubspec.lock", "sha256": "361ef5fe0f2d37ec49164adf6b67b8f38a3c5c615ed6c86ce7297e9855130479" }
+  ]},
+  "rust": { "rustc_version": "1.91.1", "cargo_version": "1.91.1", "host": "x86_64-pc-windows-msvc" },
+  "windows_toolchain": { "product": "Visual Studio 2022", "product_version": "17.14.38", "installation_version": "17.14.37531.7", "msvc": "14.44.35207", "cl": "19.44.35228.0", "toolset": "v143", "windows_sdk": "10.0.26100.0", "msbuild": "17.14.51.32402", "workload": "Microsoft.VisualStudio.Workload.NativeDesktop" },
+  "cmake": { "version": "3.31.6-msvc6", "generator": "Visual Studio 17 2022" },
+  "perl": { "distribution": "Strawberry Perl", "version": "5.42.2", "architecture": "MSWin32-x64-multi-thread", "required_module": "Locale::Maketext::Simple", "preferred_local_executable": "C:\\Strawberry\\perl\\bin\\perl.exe" },
+  "parameters": { "files": [
+    { "path": "assets/sapling-spend.params", "sha256": "8e48ffd23abb3a5fd9c5589204f32d9c31285a04b78096ba40a79b75677efc13" },
+    { "path": "assets/sapling-output.params", "sha256": "2f0ebbcbb9bb0bcffe95a397e7eba89c29eb4dde6191c339db88570e3f3fb0e4" }
+  ], "optional_external_root": "D:\\.zcash-params" },
+  "submodules": { "untracked_policy": "blocked", "remediation": "git submodule update --init --recursive --checkout", "gitlinks": [
+    { "path": "native/zcash-sync", "sha": "6bd60a6270bc3dd8be002afb0d6a85cdf4fe81d1" },
+    { "path": "native/zcash-params", "sha": "d6f179bf1186f226305f1372ee7cb7d78934ee6b" },
+    { "path": "librustzcash", "sha": "8b6c0c0a67105c5639450f41036963c9a5f57706" },
+    { "path": "orchard", "sha": "2186856809908e004c9a04b9374aa1ba5040f409" },
+    { "path": "native/zcash-vote", "sha": "7322086e471f60e302da07dad67315c47e3b47f0" },
+    { "path": "misc/flathub", "sha": "ac46f8397c8a9df2ac348a807ebf52ccce21a1c7" }
+  ]},
+  "native_runtime": { "source": "native/zcash-sync", "package": "zcash-warpsync", "library": "warp_api_ffi", "crate_types": ["rlib", "cdylib"], "required_features": ["dart_ffi", "sqlcipher"] },
+  "windows_runner": { "project": "buck_wallet", "binary": "buck-wallet", "entry": "wWinMain", "target_type": "WIN32", "product": "BUCK Wallet", "original_filename": "buck-wallet.exe", "icon": "windows/runner/resources/app.ico", "declared_version": "1.14.2+573" },
+  "core_compatibility": { "status": "PENDING HUMAN APPROVAL" },
+  "known_environmental_blockers": [ { "id": "AVAST_CARGO_EVOGEN", "product": "Avast", "detection": "EvoGen", "cargo_check": "BLOCKED BY LOCAL AV / ENDPOINT ENVIRONMENT", "cargo_test": "NOT RUN AFTER CHECK BLOCKED", "vendor_confirmation": "PENDING" } ]
+}
