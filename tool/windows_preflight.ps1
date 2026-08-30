@@ -2,10 +2,11 @@
 param(
     [string]$Mode = 'DeveloperPreflight',
     [string]$NetworkMode = 'Offline',
-    [string]$OutputFormat = 'Text',
+    [string]$OutputFormat = 'Json',
     [string]$JsonOutputPath,
     [string]$FlutterRoot,
     [string]$PerlPath,
+    [string]$ExpectedReleaseSha,
     [switch]$Quick,
     [string]$BaselinePath
 )
@@ -14,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:Checks = [System.Collections.Generic.List[object]]::new()
 $script:InternalError = $false
-$script:BaselineSchema = 1
+$script:BaselineSchema = 2
 $script:RepoRoot = $null
 $script:Baseline = $null
 
@@ -72,10 +73,10 @@ function Add-HashCheck {
 }
 
 function Assert-Baseline {
-    $required=@('schema_version','policy_revision','repository','canonical_branch','baseline_sha','authority','human_manifests','history_anchors','flutter','dart','pub','rust','windows_toolchain','cmake','perl','parameters','submodules','native_runtime','windows_runner','core_compatibility','known_environmental_blockers')
+    $required=@('schema_version','policy_revision','repository','canonical_branch','minimum_baseline_sha','authority','human_manifests','history_anchors','flutter','dart','pub','rust','windows_toolchain','cmake','perl','parameters','submodules','native_runtime','windows_runner','core_compatibility','known_environmental_blockers')
     foreach($name in $required){ if(-not $script:Baseline.PSObject.Properties[$name]){throw "Baseline missing field: $name"} }
     if($script:Baseline.schema_version -ne $script:BaselineSchema){throw "Unsupported schema_version: $($script:Baseline.schema_version)"}
-    if(-not (Test-Sha $script:Baseline.baseline_sha 40)){throw 'Invalid baseline_sha'}
+    if(-not (Test-Sha $script:Baseline.minimum_baseline_sha 40)){throw 'Invalid minimum_baseline_sha'}
     $seen=@{}
     foreach($m in @($script:Baseline.human_manifests)){
         if($seen.ContainsKey([string]$m.path)){throw "Duplicate manifest path: $($m.path)"};$seen[$m.path]=$true
@@ -94,10 +95,12 @@ function Test-GitState {
     $head=Invoke-Captured $git.Source @('rev-parse','HEAD') $script:RepoRoot
     if($head.ExitCode -ne 0 -or -not(Test-Sha $head.Output 40)){Add-Check 'GIT_HEAD' 'Read repository HEAD' '40-hex SHA' $head.Output 'UNPROVEN' $true 'Run inside a valid checkout.' 'git rev-parse HEAD';return $null}
     $branch=(Invoke-Captured $git.Source @('branch','--show-current') $script:RepoRoot).Output
-    $ancestor=Invoke-Captured $git.Source @('merge-base','--is-ancestor',$script:Baseline.baseline_sha,$head.Output) $script:RepoRoot
-    $class=if($Mode -eq 'ReleasePreflight'){if($head.Output -eq $script:Baseline.baseline_sha){'PASS'}else{'BLOCKED'}}else{if($ancestor.ExitCode -eq 0){'PASS'}else{'BLOCKED'}}
-    Add-Check 'SOURCE_BASELINE' 'HEAD satisfies mode source policy' $(if($Mode -eq 'ReleasePreflight'){$script:Baseline.baseline_sha}else{"descendant of $($script:Baseline.baseline_sha)"}) $head.Output $class $true 'Use the approved baseline or an approved descendant for DeveloperPreflight.' 'git rev-parse / merge-base'
-    if($branch -eq $script:Baseline.canonical_branch -and $head.Output -ne $script:Baseline.baseline_sha){Add-Check 'CANONICAL_BRANCH_SHA' 'Canonical branch remains at approved SHA' $script:Baseline.baseline_sha $head.Output 'BLOCKED' $true 'Restore canonical branch/ref integrity.' 'git branch --show-current'}
+    $ancestor=Invoke-Captured $git.Source @('merge-base','--is-ancestor',$script:Baseline.minimum_baseline_sha,$head.Output) $script:RepoRoot
+    Add-Check 'SOURCE_BASELINE' 'HEAD descends from accepted minimum source baseline' "descendant of $($script:Baseline.minimum_baseline_sha)" $head.Output $(if($ancestor.ExitCode -eq 0){'PASS'}else{'BLOCKED'}) $true 'Use the accepted source lineage.' 'git merge-base --is-ancestor'
+    if($Mode -eq 'ReleasePreflight'){
+        Add-Check 'SOURCE_IDENTITY' 'Release HEAD exactly matches caller-supplied reviewed source identity' $ExpectedReleaseSha $head.Output $(if($head.Output -eq $ExpectedReleaseSha){'PASS'}else{'BLOCKED'}) $true 'Supply the exact reviewed release commit with -ExpectedReleaseSha.' 'parameter / git rev-parse HEAD'
+    }
+    if($branch -eq $script:Baseline.canonical_branch){Add-Check 'CANONICAL_BRANCH_LINEAGE' 'Checked-out canonical branch descends from accepted minimum source baseline' "descendant of $($script:Baseline.minimum_baseline_sha)" $head.Output $(if($ancestor.ExitCode -eq 0){'PASS'}else{'BLOCKED'}) $true 'Stop and review canonical branch lineage.' 'git branch --show-current / merge-base'}
     $status=(Invoke-Captured $git.Source @('-c','core.optionalLocks=false','status','--porcelain=v1','-uall') $script:RepoRoot).Output
     if([string]::IsNullOrEmpty($status)){Add-Check 'SUPERPROJECT_CLEAN' 'Superproject working tree state' 'clean' 'clean' 'PASS' $true '' 'git status --porcelain=v1'}
     else {
@@ -128,7 +131,7 @@ function Get-NestedGitlinkState {
 
 function Test-Submodules($GitState) {
     foreach($s in @($script:Baseline.submodules.gitlinks)){
-        $actual=(Invoke-Captured $GitState.Git @('ls-tree',$script:Baseline.baseline_sha,'--',$s.path) $script:RepoRoot).Output
+        $actual=(Invoke-Captured $GitState.Git @('ls-tree',$script:Baseline.minimum_baseline_sha,'--',$s.path) $script:RepoRoot).Output
         $parts=$actual -split '\s+'; $treeSha=if($parts.Count -ge 3){$parts[2]}else{''}
         Add-Check "GITLINK_$($s.path.Replace('/','_').ToUpperInvariant())" 'Baseline and superproject gitlink match contract' $s.sha $treeSha $(if($treeSha -eq $s.sha){'PASS'}else{'BLOCKED'}) $true $script:Baseline.submodules.remediation 'git ls-tree'
         $dir=Join-Path $script:RepoRoot ([string]$s.path); $inside=Invoke-Captured $GitState.Git @('-C',$dir,'rev-parse','--is-inside-work-tree')
@@ -144,10 +147,15 @@ function Test-Flutter {
     if(-not $resolved){Add-Check 'FLUTTER_ROOT' 'Flutter root exists' $script:Baseline.flutter.version $root 'BLOCKED' $true 'Supply -FlutterRoot pointing to the exact reviewed SDK.' 'parameter/baseline';return}
     if($Mode -eq 'ReleasePreflight' -and (Test-Reparse $resolved)){Add-Check 'FLUTTER_ROOT_REPARSE' 'Flutter root is not a reparse point' 'regular directory' 'reparse point' 'BLOCKED' $true 'Use a validated non-reparse SDK root.' $resolved;return}
     $exe=Join-Path $resolved 'bin\flutter.bat';$versionFile=Join-Path $resolved 'version';$engineFile=Join-Path $resolved 'bin\internal\engine.version';$dartFile=Join-Path $resolved 'bin\cache\dart-sdk\version';$git=Get-Command git -ErrorAction SilentlyContinue
-    if(-not(Test-Path -LiteralPath $versionFile) -or -not(Test-Path -LiteralPath $engineFile) -or -not$git){Add-Check 'FLUTTER_IDENTITY' 'Flutter identity metadata is discoverable' $script:Baseline.flutter.version 'required SDK metadata missing' 'BLOCKED' $true 'Supply the exact reviewed Flutter SDK.' $resolved;return}
+    if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){Add-Check 'FLUTTER_EXECUTABLE' 'Selected Flutter executable exists as a file' $exe 'missing' 'BLOCKED' $true 'Supply -FlutterRoot pointing to the exact reviewed SDK checkout.' $exe;return}
+    Add-Check 'FLUTTER_EXECUTABLE' 'Selected Flutter executable exists as a file' $exe $exe 'PASS' $true '' $exe
+    if(-not(Test-Path -LiteralPath $versionFile -PathType Leaf) -or -not(Test-Path -LiteralPath $engineFile -PathType Leaf) -or -not$git){Add-Check 'FLUTTER_IDENTITY' 'Flutter identity metadata is discoverable' $script:Baseline.flutter.version 'required SDK metadata missing' 'BLOCKED' $true 'Supply the exact reviewed Flutter SDK.' $resolved;return}
     $fv=(Get-Content -LiteralPath $versionFile -Raw).Trim();$engine=(Get-Content -LiteralPath $engineFile -Raw).Trim();$framework=(Invoke-Captured $git.Source @('-C',$resolved,'rev-parse','HEAD')).Output
     $ok=($fv -eq $script:Baseline.flutter.version -and $framework -eq $script:Baseline.flutter.framework_sha -and $engine -eq $script:Baseline.flutter.engine_sha);$obs="version=$fv; framework=$framework; engine=$engine"
     Add-Check 'FLUTTER_IDENTITY' 'Flutter version/framework/engine identity' "$($script:Baseline.flutter.version); $($script:Baseline.flutter.framework_sha); $($script:Baseline.flutter.engine_sha)" $obs $(if($ok){'PASS'}else{'BLOCKED'}) $true 'Select the exact reviewed Flutter SDK.' 'flutter --version --machine'
+    $sdkStatus=Invoke-Captured $git.Source @('-c','core.optionalLocks=false','-C',$resolved,'status','--porcelain=v1','-uall')
+    $sdkClean=$sdkStatus.ExitCode -eq 0 -and [string]::IsNullOrEmpty($sdkStatus.Output)
+    Add-Check 'FLUTTER_SDK_GIT_CLEAN' 'Selected Flutter SDK Git checkout has no tracked modifications or untracked files' 'clean (tracked and untracked)' $(if($sdkClean){'clean'}else{$sdkStatus.Output}) $(if($sdkClean){'PASS'}else{'BLOCKED'}) $true 'Review the selected SDK checkout; do not clean or reset it automatically.' 'git status --porcelain=v1 -uall'
     $dart=if(Test-Path -LiteralPath $dartFile){(Get-Content -LiteralPath $dartFile -Raw).Trim()}else{'missing'}
     Add-Check 'DART_VERSION' 'Bundled Dart SDK version is exact' $script:Baseline.dart.version $dart $(if($dart -eq $script:Baseline.dart.version){'PASS'}else{'BLOCKED'}) $true 'Use Dart bundled with the reviewed Flutter SDK.' 'Flutter SDK dart version metadata'
     $pathFlutter=Get-Command flutter -ErrorAction SilentlyContinue;if($pathFlutter -and $pathFlutter.Source -ne $exe){Add-Check 'PATH_FLUTTER_MISMATCH' 'PATH Flutter is the selected Flutter executable' $exe $pathFlutter.Source 'WARNING' $false 'Use -FlutterRoot; PATH is diagnostic only.' 'PATH'}else{Add-Check 'PATH_FLUTTER_MISMATCH' 'PATH Flutter diagnostic' $exe $(if($pathFlutter){$pathFlutter.Source}else{'not on PATH'}) 'PASS' $false '' 'PATH'}
@@ -195,8 +203,10 @@ function Test-StaticReadiness {
     $n=$script:Baseline.native_runtime;$ok=$cargo -match ('name\s*=\s*"'+[regex]::Escape($n.package)+'"') -and $cargo -match ('name\s*=\s*"'+[regex]::Escape($n.library)+'"')
     foreach($ct in @($n.crate_types)){$ok=$ok -and $cargo -match ('"'+[regex]::Escape($ct)+'"')};foreach($f in @($n.required_features)){$ok=$ok -and $cargo -match ('(?m)^'+[regex]::Escape($f)+'\s*=')}
     Add-Check 'NATIVE_RUNTIME_STATIC' 'Native runtime Cargo manifest declares reviewed package/library/types/features' $n ($ok) $(if($ok){'PASS'}else{'BLOCKED'}) $true 'Restore the reviewed Cargo manifest; do not use build output as evidence.' 'native/zcash-sync/Cargo.toml'
-    $w=$script:Baseline.windows_runner;$files=@('pubspec.yaml','windows/CMakeLists.txt','windows/runner/CMakeLists.txt','windows/runner/main.cpp','windows/runner/Runner.rc');$text=($files|ForEach-Object{Get-Content -LiteralPath (Join-Path $script:RepoRoot $_) -Raw}) -join "`n"
-    $icon=Test-Path -LiteralPath (Join-Path $script:RepoRoot $w.icon);$ok=$icon -and $text -match ('name:\s*'+[regex]::Escape($w.project)) -and $text -match ('version:\s*'+[regex]::Escape($w.declared_version)) -and $text -match ([regex]::Escape($w.binary)) -and $text -match ([regex]::Escape($w.entry)) -and $text -match ('add_executable\([^\r\n]+WIN32') -and $text -match ([regex]::Escape($w.original_filename))
+    $w=$script:Baseline.windows_runner;$files=@('pubspec.yaml','windows/CMakeLists.txt','windows/runner/CMakeLists.txt','windows/runner/main.cpp','windows/runner/Runner.rc')
+    $pub=Get-Content -LiteralPath (Join-Path $script:RepoRoot $files[0]) -Raw;$projectCmake=Get-Content -LiteralPath (Join-Path $script:RepoRoot $files[1]) -Raw;$runnerCmake=Get-Content -LiteralPath (Join-Path $script:RepoRoot $files[2]) -Raw;$main=Get-Content -LiteralPath (Join-Path $script:RepoRoot $files[3]) -Raw;$resource=Get-Content -LiteralPath (Join-Path $script:RepoRoot $files[4]) -Raw
+    $iconRelative=([string]$w.icon -replace '^windows/runner/','' -replace '/','\\');$icon=Test-Path -LiteralPath (Join-Path $script:RepoRoot $w.icon) -PathType Leaf
+    $ok=$icon -and $pub -match ('(?m)^name:\s*'+[regex]::Escape($w.project)+'\s*$') -and $pub -match ('(?m)^version:\s*'+[regex]::Escape($w.declared_version)+'\s*$') -and $projectCmake -match ('(?m)^project\('+[regex]::Escape($w.project)+'\s') -and $projectCmake -match ('(?m)^set\(BINARY_NAME\s+"'+[regex]::Escape($w.binary)+'"\)') -and $runnerCmake -match ('add_executable\(\$\{BINARY_NAME\}\s+'+[regex]::Escape($w.target_type)) -and $main -match ('\b'+[regex]::Escape($w.entry)+'\s*\(') -and $main -match ('CreateAndShow\(L"'+[regex]::Escape($w.product)+'"') -and $resource -match ('VALUE\s+"ProductName",\s*"'+[regex]::Escape($w.product)+'"') -and $resource -match ('VALUE\s+"OriginalFilename",\s*"'+[regex]::Escape($w.original_filename)+'"') -and $resource -match ('ICON\s+"'+[regex]::Escape($iconRelative)+'"')
     Add-Check 'WINDOWS_RUNNER_STATIC' 'Tracked Windows runner declarations match reviewed identity' $w $ok $(if($ok){'PASS'}else{'BLOCKED'}) $true 'Restore reviewed tracked runner configuration.' ($files -join ', ')
     Add-Check 'EXISTING_RELEASE_OUTPUT' 'Existing release output is not used for readiness' 'not inspected' 'not inspected' 'SKIPPED' $false '' 'policy'
     Add-Check 'CORE_COMPATIBILITY' 'Core compatibility approval remains pending' $script:Baseline.core_compatibility.status $script:Baseline.core_compatibility.status 'WARNING' $false 'Obtain separate human approval; this preflight does not claim compatibility.' 'baseline policy'
@@ -215,7 +225,7 @@ function Write-Result {
     $warnings=@($script:Checks|Where-Object{$_.classification -in @('WARNING','SKIPPED')}).Count
     $state=if($exit -eq 3){'ENVIRONMENTALLY BLOCKED'}elseif($exit -in 1,2){'NOT READY'}elseif($warnings){'READY WITH WARNINGS'}else{'READY'}
     $summary=[ordered]@{};foreach($c in @('PASS','WARNING','BLOCKED','UNPROVEN','ENVIRONMENTAL_BLOCKER','SKIPPED')){$summary[$c]=@($script:Checks|Where-Object classification -eq $c).Count};$summary['state']=$state
-    $obj=[pscustomobject][ordered]@{schema_version=1;timestamp_utc=[DateTime]::UtcNow.ToString('o');repository=$(if($script:Baseline){$script:Baseline.repository}else{'unknown'});expected_baseline=$(if($script:Baseline){$script:Baseline.baseline_sha}else{'unknown'});observed_head=$Head;mode=$Mode;network_mode=$NetworkMode;checks=$script:Checks;summary=$summary;exit_code=$exit}
+    $obj=[pscustomobject][ordered]@{schema_version=1;timestamp_utc=[DateTime]::UtcNow.ToString('o');repository=$(if($script:Baseline){$script:Baseline.repository}else{'unknown'});accepted_minimum_baseline=$(if($script:Baseline){$script:Baseline.minimum_baseline_sha}else{'unknown'});expected_release_source=$(if($Mode -eq 'ReleasePreflight'){$ExpectedReleaseSha}else{$null});observed_head=$Head;mode=$Mode;network_mode=$NetworkMode;checks=$script:Checks;summary=$summary;exit_code=$exit}
     $json=$obj|ConvertTo-Json -Depth 12
     if($JsonOutputPath){$target=[IO.Path]::GetFullPath($JsonOutputPath);[IO.File]::WriteAllText($target,$json,[Text.UTF8Encoding]::new($false))}
     if($OutputFormat -eq 'Json'){$json}else{foreach($c in $script:Checks){$label=if($c.classification -eq 'ENVIRONMENTAL_BLOCKER'){'ENV'}else{$c.classification};"[{0,-7}] {1}" -f $label,$c.id;if($c.classification -ne 'PASS' -and $c.remediation){"          Remediation: $($c.remediation)"}};"PREFLIGHT RESULT: $state"}
@@ -228,6 +238,7 @@ try {
     if($NetworkMode -notin @('Offline','Online')){throw "Invalid NetworkMode: $NetworkMode"}
     if($OutputFormat -notin @('Text','Json')){throw "Invalid OutputFormat: $OutputFormat"}
     if($Quick -and $Mode -eq 'ReleasePreflight'){throw 'ReleasePreflight + Quick is an invalid invocation; release always requires full verification.'}
+    if($Mode -eq 'ReleasePreflight' -and -not(Test-Sha $ExpectedReleaseSha 40)){throw 'ReleasePreflight requires -ExpectedReleaseSha with an exact 40-hex reviewed release commit.'}
     $scriptPath=$MyInvocation.MyCommand.Path;$scriptDir=Split-Path -Parent $scriptPath
     if(-not$BaselinePath){$BaselinePath=Join-Path $scriptDir 'windows_preflight.baseline.json'}
     $baselineResolved=Resolve-SafePath $BaselinePath;if(-not$baselineResolved){throw "Baseline JSON not found: $BaselinePath"}
@@ -243,7 +254,7 @@ try {
     Test-Flutter;Test-Rust;Test-Toolchain;Test-Perl
     if($g){if($Quick){Add-Check 'SUBMODULE_FULL' 'Recursive submodule verification skipped in Developer Quick mode' 'full verification' 'skipped' 'UNPROVEN' $true 'Run full DeveloperPreflight.' 'policy'}else{Test-Submodules $g}}
     Test-StaticReadiness;Test-Endpoint
-    if($NetworkMode -eq 'Online' -and $g){$remote=Invoke-Captured $g.Git @('ls-remote','--heads','origin',$script:Baseline.canonical_branch) $script:RepoRoot;if($remote.ExitCode -eq 0){$sha=($remote.Output -split '\s+')[0];Add-Check 'REMOTE_CANONICAL' 'Live remote canonical observed without ref update' $script:Baseline.baseline_sha $sha $(if($sha -eq $script:Baseline.baseline_sha){'PASS'}else{'BLOCKED'}) $true 'Stop for canonical drift.' 'git ls-remote'}else{Add-Check 'REMOTE_CANONICAL' 'Optional live remote observation' $script:Baseline.baseline_sha $remote.Output 'WARNING' $false 'Retry Online mode when network is available.' 'git ls-remote'}}else{Add-Check 'REMOTE_CANONICAL' 'Network probe disabled by default' 'offline' 'not requested' 'SKIPPED' $false '' 'NetworkMode Offline'}
+    if($NetworkMode -eq 'Online' -and $g){$remote=Invoke-Captured $g.Git @('ls-remote','--heads','origin',$script:Baseline.canonical_branch) $script:RepoRoot;if($remote.ExitCode -eq 0){$sha=($remote.Output -split '\s+')[0];Add-Check 'REMOTE_CANONICAL' 'Live remote canonical observed without ref update' $script:Baseline.minimum_baseline_sha $sha $(if($sha -eq $script:Baseline.minimum_baseline_sha){'PASS'}else{'BLOCKED'}) $true 'Stop for canonical drift.' 'git ls-remote'}else{Add-Check 'REMOTE_CANONICAL' 'Optional live remote observation' $script:Baseline.minimum_baseline_sha $remote.Output 'WARNING' $false 'Retry Online mode when network is available.' 'git ls-remote'}}else{Add-Check 'REMOTE_CANONICAL' 'Network probe disabled by default' 'offline' 'not requested' 'SKIPPED' $false '' 'NetworkMode Offline'}
 } catch {
     $script:InternalError=$true;Add-Check 'PREFLIGHT_INTERNAL' 'Preflight invocation and internal execution' 'valid invocation and complete execution' $_.Exception.Message 'UNPROVEN' $true 'Correct the invocation or baseline/script defect.' 'preflight runtime'
 }
