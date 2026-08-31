@@ -18,6 +18,12 @@ $script:ReleaseSourceSha = $null
 $script:Preflight = $null
 $script:PreflightExit = $null
 $script:NativeStatus = 'NOT_RUN'
+$script:ParameterEnvironmentStatus = 'NOT_RUN'
+$script:ParameterHashStatus = 'NOT_RUN'
+$script:MsvcEnvironmentStatus = 'NOT_RUN'
+$script:BuildUserProfile = $null
+$script:BuildParameterDirectory = $null
+$script:BuildParameters = @()
 $script:FlutterStatus = 'NOT_RUN'
 $script:VerificationStatus = 'NOT_RUN'
 $script:Warnings = [Collections.Generic.List[string]]::new()
@@ -75,6 +81,26 @@ function Invoke-Git {
     $result = Invoke-Streaming -FilePath (Get-Command git -ErrorAction Stop).Source -Arguments $Arguments -WorkingDirectory $script:RepoRoot
     if ($result.ExitCode -ne 0) { throw "git failed ($($result.ExitCode)): git $($Arguments -join ' ')" }
     $result.Output.Trim()
+}
+
+function Import-VsDevEnvironment {
+    param([Parameter(Mandatory)][string]$VsDevCmd)
+    if (-not (Test-Path -LiteralPath $VsDevCmd -PathType Leaf)) { throw "VsDevCmd.bat is missing: $VsDevCmd" }
+    if ((Get-Item -LiteralPath $VsDevCmd).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'VsDevCmd.bat must not be a reparse point.' }
+    if ($VsDevCmd.IndexOfAny([char[]]@('"',"`r","`n")) -ge 0) { throw 'VsDevCmd.bat path contains unsafe command characters.' }
+    $command = 'call "' + $VsDevCmd + '" -arch=x64 -host_arch=x64 >nul && set'
+    $old = (Get-Location).Path
+    try {
+        Set-Location -LiteralPath $script:RepoRoot
+        $lines = @(& $env:ComSpec /d /s /c $command 2>&1 | ForEach-Object { $_.ToString() })
+        $code = $LASTEXITCODE
+    } finally {
+        Set-Location -LiteralPath $old
+    }
+    if ($code -ne 0) { throw "VsDevCmd.bat failed with exit $code." }
+    foreach ($line in $lines) {
+        if ($line -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process') }
+    }
 }
 
 function Get-FullPath {
@@ -152,6 +178,9 @@ function Write-MachineResult {
         source_sha = $script:ReleaseSourceSha
         preflight_exit_code = $script:PreflightExit
         native_build_status = $script:NativeStatus
+        parameter_environment_status = $script:ParameterEnvironmentStatus
+        parameter_hash_validation_status = $script:ParameterHashStatus
+        msvc_environment_status = $script:MsvcEnvironmentStatus
         flutter_build_status = $script:FlutterStatus
         verification_status = $script:VerificationStatus
         release_directory = $script:FinalDirectory
@@ -226,6 +255,7 @@ try {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     $vsJson = & $vswhere -latest -products '*' -requires ([string]$baseline.windows_toolchain.workload) -format json -utf8 | ConvertFrom-Json
     $vsRoot = [string]@($vsJson)[0].installationPath
+    $vsDevCmd = Join-Path $vsRoot 'Common7\Tools\VsDevCmd.bat'
     $dumpbin = Join-Path $vsRoot "VC\Tools\MSVC\$($baseline.windows_toolchain.msvc)\bin\Hostx64\x64\dumpbin.exe"
     if (-not (Test-Path -LiteralPath $dumpbin -PathType Leaf)) { throw 'Preflight-accepted Visual Studio installation has no expected x64 dumpbin.exe.' }
 
@@ -233,6 +263,52 @@ try {
     $flutterOutputRoot = Join-Path $script:RepoRoot 'build\windows\x64\runner\Release'
     $exeOutput = Join-Path $flutterOutputRoot 'buck-wallet.exe'
     $staleEvidence = [ordered]@{}
+    Write-Stage 'PARAMETER_ENVIRONMENT' 'Resolve the deterministic Windows build-time Sapling parameter directory' {
+        $script:ParameterEnvironmentStatus = 'FAIL'
+        $userProfile = [string]$env:USERPROFILE
+        if ([string]::IsNullOrWhiteSpace($userProfile)) { throw 'USERPROFILE is absent or empty; a process-local HOME mapping cannot be established.' }
+        if (-not [IO.Path]::IsPathRooted($userProfile) -or $userProfile -notmatch '^[A-Za-z]:\\') { throw "USERPROFILE is not an absolute drive-qualified Windows path: '$userProfile'" }
+        $userProfile = Get-FullPath $userProfile
+        $profileItem = Get-Item -LiteralPath $userProfile -ErrorAction Stop
+        if (-not $profileItem.PSIsContainer) { throw "USERPROFILE is not an existing directory: '$userProfile'" }
+        if ($profileItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "USERPROFILE must not be a reparse point: '$userProfile'" }
+        if (-not (Get-FullPath $profileItem.FullName).Equals($userProfile, [StringComparison]::OrdinalIgnoreCase)) { throw 'USERPROFILE resolved to an unexpected path.' }
+
+        $script:BuildUserProfile = $userProfile
+        $script:BuildParameterDirectory = Assert-DirectChildBoundary (Join-Path $userProfile '.zcash-params') $userProfile
+        $parameterDirectoryItem = Get-Item -LiteralPath $script:BuildParameterDirectory -ErrorAction Stop
+        if (-not $parameterDirectoryItem.PSIsContainer) { throw "Build-time parameter path is not a directory: '$($script:BuildParameterDirectory)'" }
+        if ($parameterDirectoryItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Build-time parameter directory must not be a reparse point: '$($script:BuildParameterDirectory)'" }
+        $script:ParameterEnvironmentStatus = 'PASS'
+    }
+
+    Write-Stage 'PARAMETER_HASH_VALIDATION' 'Validate exact build-time Sapling parameter sizes and SHA-256 identities' {
+        $script:ParameterHashStatus = 'FAIL'
+        $expectedParameters = @(
+            @{ Name='sapling-spend.params'; Size=47958396L; Sha256='8e48ffd23abb3a5fd9c5589204f32d9c31285a04b78096ba40a79b75677efc13' },
+            @{ Name='sapling-output.params'; Size=3592860L; Sha256='2f0ebbcbb9bb0bcffe95a397e7eba89c29eb4dde6191c339db88570e3f3fb0e4' }
+        )
+        $script:BuildParameters = @($expectedParameters | ForEach-Object {
+            $path = Assert-DirectChildBoundary (Join-Path $script:BuildParameterDirectory $_.Name) $script:BuildParameterDirectory
+            $item = Get-Item -LiteralPath $path -ErrorAction Stop
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Build-time parameter must be a regular file: '$path'" }
+            $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($item.Length -ne $_.Size) { throw "Build-time parameter size mismatch for '$($_.Name)': expected $($_.Size), observed $($item.Length)." }
+            if ($hash -cne $_.Sha256) { throw "Build-time parameter SHA-256 mismatch for '$($_.Name)'." }
+            [pscustomobject][ordered]@{ path=$path; size=[long]$item.Length; sha256=$hash }
+        })
+        $script:ParameterHashStatus = 'PASS'
+    }
+
+    Write-Stage 'MSVC_ENVIRONMENT' 'Initialize the accepted Visual Studio x64 developer environment process-locally' {
+        $script:MsvcEnvironmentStatus = 'FAIL'
+        Import-VsDevEnvironment -VsDevCmd $vsDevCmd
+        if ($env:VCToolsVersion.TrimEnd('\\') -ne [string]$baseline.windows_toolchain.msvc) { throw "VsDevCmd selected unexpected VCToolsVersion '$env:VCToolsVersion'." }
+        if ($env:WindowsSDKVersion.TrimEnd('\\') -ne [string]$baseline.windows_toolchain.windows_sdk) { throw "VsDevCmd selected unexpected WindowsSDKVersion '$env:WindowsSDKVersion'." }
+        $cl = (Get-Command cl.exe -ErrorAction Stop).Source
+        if ($cl -notmatch '(?i)\\Hostx64\\x64\\cl\.exe$') { throw "VsDevCmd did not select the Hostx64\\x64 compiler: '$cl'" }
+        $script:MsvcEnvironmentStatus = 'PASS'
+    }
 
     Write-Stage 'STALE-DEFENSE' 'Record and remove only the two exact proof artifacts' {
         foreach ($proof in @(
@@ -247,13 +323,18 @@ try {
         }
     }
 
-    Write-Stage 'NATIVE-BUILD' 'Build locked native x64 release runtime with approved features' {
+    Write-Stage 'NATIVE_BUILD' 'Build locked native x64 release runtime with approved features and validated process-local prerequisites' {
         $oldCargoOffline = $env:CARGO_NET_OFFLINE
+        $oldHome = $env:HOME
         try {
             $env:CARGO_NET_OFFLINE = 'true'
+            # zcash-params/build.rs reads HOME directly. Ignore any inherited HOME and
+            # deterministically map only this release process to validated USERPROFILE.
+            $env:HOME = $script:BuildUserProfile
             $nativeRun = Invoke-Streaming -FilePath $cargoExe -Arguments @('build','--locked','--release','--features=dart_ffi,sqlcipher') -WorkingDirectory (Join-Path $script:RepoRoot 'native\zcash-sync')
         } finally {
             if ($null -eq $oldCargoOffline) { Remove-Item Env:CARGO_NET_OFFLINE -ErrorAction SilentlyContinue } else { $env:CARGO_NET_OFFLINE = $oldCargoOffline }
+            if ($null -eq $oldHome) { Remove-Item Env:HOME -ErrorAction SilentlyContinue } else { $env:HOME = $oldHome }
         }
         if ($nativeRun.ExitCode -ne 0) { $script:NativeStatus = 'FAIL'; throw "Native Cargo release build failed with exit $($nativeRun.ExitCode)." }
         if (-not (Test-Path -LiteralPath $nativeOutput -PathType Leaf)) { $script:NativeStatus = 'FAIL'; throw 'Native proof DLL was not recreated.' }
@@ -392,6 +473,7 @@ try {
             windows_sdk_identity = $baseline.windows_toolchain.windows_sdk
             cmake_identity = $baseline.cmake
             native_features = @('dart_ffi','sqlcipher')
+            build_time_sapling_parameters = $script:BuildParameters
             submodule_shas = $submodules
             preflight = [pscustomobject]@{ exit_code=$script:PreflightExit; summary=$script:Preflight.summary; warnings=@($script:Preflight.checks | Where-Object classification -in @('WARNING','SKIPPED') | ForEach-Object { [pscustomobject]@{ id=$_.id; classification=$_.classification } }); environmental_blockers=@($script:EnvironmentalBlockers) }
             avast = [pscustomobject]@{ blocker_detected=($script:EnvironmentalBlockers -contains 'AVAST_CARGO_EVOGEN'); operator_acknowledged=[bool]$AcknowledgeKnownAvastBlocker; vendor_confirmation='PENDING'; cargo_workspace_check='BLOCKED BY LOCAL AV / ENDPOINT ENVIRONMENT'; cargo_workspace_test='NOT RUN AFTER CHECK BLOCKED' }
