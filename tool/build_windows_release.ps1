@@ -344,13 +344,13 @@ try {
         $script:NativeStatus = 'PASS'
     }
 
-    $nativeEvidence = $null
+    $script:NativeEvidence = $null
     Write-Stage 'NATIVE-VERIFY' 'Verify native DLL identity, PE machine, imports, export sentinel, hash and size' {
-        $nativeEvidence = Get-PeEvidence -Dumpbin $dumpbin -Path $nativeOutput -RequireInitWallet
-        $nativeEvidence.path = 'target\release\warp_api_ffi.dll'
+        $script:NativeEvidence = Get-PeEvidence -Dumpbin $dumpbin -Path $nativeOutput -RequireInitWallet
+        $script:NativeEvidence.path = 'target\release\warp_api_ffi.dll'
         $nativeFile = Get-FileEvidence $nativeOutput $script:RepoRoot
-        $nativeEvidence | Add-Member -NotePropertyName sha256 -NotePropertyValue $nativeFile.sha256
-        $nativeEvidence | Add-Member -NotePropertyName size -NotePropertyValue $nativeFile.size
+        $script:NativeEvidence | Add-Member -NotePropertyName sha256 -NotePropertyValue $nativeFile.sha256
+        $script:NativeEvidence | Add-Member -NotePropertyName size -NotePropertyValue $nativeFile.size
     }
 
     Write-Stage 'FLUTTER-BUILD' 'Build the pinned Flutter Windows release bundle without manual restoration' {
@@ -484,7 +484,7 @@ try {
             artifacts = $script:Artifacts
             artifact_coverage_policy = 'All payload files are hashed except BUCK-Wallet-build-manifest.json; the manifest does not self-hash.'
             dependencies = @($dependencyResults)
-            native_dll = $nativeEvidence
+            native_dll = $script:NativeEvidence
             windows_executable = [pscustomobject]@{ machine=$exePe.machine; subsystem=$exePe.subsystem; product_name=$exeVersion.ProductName; original_filename=$exeVersion.OriginalFilename; file_version=$exeVersion.FileVersion; product_version=$exeVersion.ProductVersion; source_entry_point='wWinMain'; cmake_target='WIN32'; icon_resource='present'; signing_status=[string]$signature.Status }
             sapling_parameters = @([pscustomobject]@{relative_path='data\flutter_assets\assets\sapling-spend.params';sha256='8e48ffd23abb3a5fd9c5589204f32d9c31285a04b78096ba40a79b75677efc13'},[pscustomobject]@{relative_path='data\flutter_assets\assets\sapling-output.params';sha256='2f0ebbcbb9bb0bcffe95a397e7eba89c29eb4dde6191c339db88570e3f3fb0e4'})
             source_post_check = [pscustomobject]@{ sha=$script:ReleaseSourceSha; clean=$true }
