@@ -161,7 +161,10 @@ function Get-PeEvidence {
     if ($headers -notmatch '(?im)^\s*8664 machine \(x64\)\s*$') { throw "PE machine is not 8664/x64: $Path" }
     if ($RequireGui -and $headers -notmatch '(?im)^\s*2 subsystem \(Windows GUI\)\s*$') { throw "PE subsystem is not Windows GUI (2): $Path" }
     if ($RequireGui -and $headers -notmatch '(?im)\.rsrc') { throw "PE resource section/icon evidence is absent: $Path" }
-    if ($RequireInitWallet -and $exports -notmatch '(?im)^\s*\d+\s+[0-9A-F]+\s+[0-9A-F]+\s+init_wallet\s*$') {
+    $exportNames = @($exports -split "`r?`n" | ForEach-Object {
+        if ($_ -match '^\s*\d+\s+[0-9A-F]+\s+[0-9A-F]+\s+([^\s=]+)(?:\s+=\s+\S+)?\s*$') { $Matches[1] }
+    })
+    if ($RequireInitWallet -and $exportNames -notcontains 'init_wallet') {
         throw "Exact selected ABI sentinel 'init_wallet' was not exported by $Path"
     }
     $imports = @($dependents -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '(?i)^[A-Z0-9_.+-]+\.dll$' } | Sort-Object -Unique)
