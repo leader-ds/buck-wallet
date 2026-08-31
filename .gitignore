@@ -48,6 +48,7 @@ app.*.map.json
 .gradle/
 
 target/
+dist/
 jniLibs/
 *.g.dart
 
