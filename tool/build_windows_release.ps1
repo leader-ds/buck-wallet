@@ -347,7 +347,8 @@ try {
     $script:NativeEvidence = $null
     Write-Stage 'NATIVE-VERIFY' 'Verify native DLL identity, PE machine, imports, export sentinel, hash and size' {
         $script:NativeEvidence = Get-PeEvidence -Dumpbin $dumpbin -Path $nativeOutput -RequireInitWallet
-        $script:NativeEvidence.path = 'target\release\warp_api_ffi.dll'
+        $script:NativeEvidence.path = 'warp_api_ffi.dll'
+        $script:NativeEvidence | Add-Member -NotePropertyName build_source_path -NotePropertyValue 'target\release\warp_api_ffi.dll'
         $nativeFile = Get-FileEvidence $nativeOutput $script:RepoRoot
         $script:NativeEvidence | Add-Member -NotePropertyName sha256 -NotePropertyValue $nativeFile.sha256
         $script:NativeEvidence | Add-Member -NotePropertyName size -NotePropertyValue $nativeFile.size
@@ -457,8 +458,14 @@ try {
         $payloadFiles = @(Get-ChildItem -LiteralPath $script:StageDirectory -Recurse -File | Sort-Object FullName)
         $script:Artifacts = @($payloadFiles | ForEach-Object { Get-FileEvidence $_.FullName $script:StageDirectory })
         $submodules = @()
-        foreach ($line in @(Invoke-Git @('ls-files','--stage'))) {
-            if ($line -match '^160000\s+([0-9a-f]{40})\s+\d+\s+(.+)$') { $submodules += [pscustomobject]@{ path=$Matches[2]; sha=$Matches[1] } }
+        $indexRecords = (Invoke-Git @('ls-files','--stage')) -split "`r?`n"
+        foreach ($line in $indexRecords) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            if ($line -match '^160000 ([0-9a-f]{40}) ([0-3])\t(.+)$') {
+                $submodules += [pscustomobject]@{ path=$Matches[3]; sha=$Matches[1] }
+            } elseif ($line -match '^160000(?:\s|$)') {
+                throw "Malformed gitlink index record: $line"
+            }
         }
         $manifest = [pscustomobject][ordered]@{
             schema_version = 1
