@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [switch]$AcknowledgeKnownAvastBlocker,
-    [string]$FlutterRoot
+    [string]$FlutterRoot,
+    [string]$OutputRoot
 )
 
 Set-StrictMode -Version Latest
@@ -34,6 +35,7 @@ $script:ResultPath = $null
 $script:Artifacts = @()
 $script:StageDirectory = $null
 $script:FailureMessage = $null
+$script:OutputRootWasSpecified = $PSBoundParameters.ContainsKey('OutputRoot')
 
 function Write-Stage {
     param([string]$Name, [string]$Purpose, [scriptblock]$Action)
@@ -129,6 +131,59 @@ function Assert-BeneathBoundary {
     $full
 }
 
+function Resolve-ReleaseOutputPaths {
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$Version,
+        [AllowNull()][string]$RequestedOutputRoot,
+        [Parameter(Mandatory)][bool]$WasSpecified
+    )
+    $defaultOutputRoot = Get-FullPath (Join-Path $RepoRoot 'dist\windows')
+    $selectedOutputRoot = $defaultOutputRoot
+    if ($WasSpecified) {
+        if ([string]::IsNullOrWhiteSpace($RequestedOutputRoot)) { throw 'Explicit -OutputRoot must not be empty or whitespace.' }
+        if ($RequestedOutputRoot.IndexOfAny([IO.Path]::GetInvalidPathChars()) -ge 0 -or [Management.Automation.WildcardPattern]::ContainsWildcardCharacters($RequestedOutputRoot)) {
+            throw "Explicit -OutputRoot contains invalid path characters: '$RequestedOutputRoot'"
+        }
+        try {
+            $candidate = if ([IO.Path]::IsPathRooted($RequestedOutputRoot)) { $RequestedOutputRoot } else { Join-Path $RepoRoot $RequestedOutputRoot }
+            $selectedOutputRoot = Get-FullPath $candidate
+        } catch {
+            throw "Explicit -OutputRoot is invalid: '$RequestedOutputRoot'"
+        }
+        $volumeRoot = [IO.Path]::GetPathRoot($selectedOutputRoot)
+        if ([string]::IsNullOrWhiteSpace($volumeRoot) -or $selectedOutputRoot.TrimEnd('\','/').Equals($volumeRoot.TrimEnd('\','/'), [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Explicit -OutputRoot must not be a filesystem root: '$selectedOutputRoot'"
+        }
+        $ancestor = $selectedOutputRoot
+        while ($ancestor) {
+            if (Test-Path -LiteralPath $ancestor) {
+                $item = Get-Item -LiteralPath $ancestor -Force
+                if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Explicit -OutputRoot must not traverse a reparse point: '$ancestor'" }
+            }
+            $parent = Split-Path -Parent $ancestor
+            if (-not $parent -or $parent.Equals($ancestor, [StringComparison]::OrdinalIgnoreCase)) { break }
+            $ancestor = $parent
+        }
+    }
+    $versionRoot = Get-FullPath (Join-Path $selectedOutputRoot $Version)
+    $finalDirectory = Get-FullPath (Join-Path $versionRoot 'BUCK-Wallet')
+    $protectedDefault = Get-FullPath (Join-Path (Join-Path $defaultOutputRoot $Version) 'BUCK-Wallet')
+    if ($WasSpecified -and $finalDirectory.Equals($protectedDefault, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Explicit -OutputRoot resolves to the protected default release destination: '$protectedDefault'"
+    }
+    if (-not ([IO.Path]::GetPathRoot($versionRoot)).Equals([IO.Path]::GetPathRoot($finalDirectory), [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Release staging and final destination must be on the same filesystem.'
+    }
+    [pscustomobject]@{
+        OutputRoot = $selectedOutputRoot
+        VersionRoot = $versionRoot
+        FinalDirectory = $finalDirectory
+        ManifestPath = Join-Path $finalDirectory 'BUCK-Wallet-build-manifest.json'
+        ResultPath = Join-Path $versionRoot 'BUCK-Wallet-build-result.json'
+    }
+}
+
 function Get-FileEvidence {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$RelativeTo)
     $item = Get-Item -LiteralPath $Path -ErrorAction Stop
@@ -213,11 +268,11 @@ try {
         $pubspec = Get-Content -LiteralPath (Join-Path $script:RepoRoot 'pubspec.yaml') -Raw
         if ($pubspec -notmatch '(?m)^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)\s*$') { throw 'pubspec.yaml has no supported version name/build number.' }
         $script:Version = "$($Matches[1])+$($Matches[2])"
-        $versionRoot = Join-Path $script:RepoRoot "dist\windows\$($script:Version)"
-        $script:FinalDirectory = Join-Path $versionRoot 'BUCK-Wallet'
-        $script:ManifestPath = Join-Path $script:FinalDirectory 'BUCK-Wallet-build-manifest.json'
-        $script:ResultPath = Join-Path $versionRoot 'BUCK-Wallet-build-result.json'
-        if (Test-Path -LiteralPath $script:FinalDirectory) { throw "Final release destination already exists: dist\windows\$($script:Version)\BUCK-Wallet" }
+        $paths = Resolve-ReleaseOutputPaths -RepoRoot $script:RepoRoot -Version $script:Version -RequestedOutputRoot $OutputRoot -WasSpecified $script:OutputRootWasSpecified
+        $script:FinalDirectory = $paths.FinalDirectory
+        $script:ManifestPath = $paths.ManifestPath
+        $script:ResultPath = $paths.ResultPath
+        if (Test-Path -LiteralPath $script:FinalDirectory) { throw "Final release destination already exists: $($script:FinalDirectory)" }
     }
 
     Write-Stage 'PREFLIGHT' 'Run the complete accepted P4 ReleasePreflight offline' {
@@ -514,9 +569,9 @@ try {
     $script:Started.Stop()
     Write-MachineResult 'RELEASE READY FOR RUNTIME VALIDATION'
     Write-Host 'RELEASE READY FOR RUNTIME VALIDATION'
-    Write-Host "Release: dist\windows\$($script:Version)\BUCK-Wallet"
-    Write-Host "Manifest: dist\windows\$($script:Version)\BUCK-Wallet\BUCK-Wallet-build-manifest.json"
-    Write-Host "Result: dist\windows\$($script:Version)\BUCK-Wallet-build-result.json"
+    Write-Host "Release: $($script:FinalDirectory)"
+    Write-Host "Manifest: $($script:ManifestPath)"
+    Write-Host "Result: $($script:ResultPath)"
     exit 0
 } catch {
     $script:FailureMessage = $_.Exception.Message
