@@ -184,6 +184,104 @@ function Resolve-ReleaseOutputPaths {
     }
 }
 
+function Assert-FlutterOfflinePrerequisites {
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$ExpectedFlutterRoot
+    )
+    $lockPath = Join-Path $RepoRoot 'pubspec.lock'
+    $pubspecPath = Join-Path $RepoRoot 'pubspec.yaml'
+    $configPath = Join-Path $RepoRoot '.dart_tool\package_config.json'
+    foreach ($required in @($lockPath, $pubspecPath, $configPath)) {
+        if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+            throw "Flutter offline prerequisite is missing: '$required'. Run the separately authorized offline prerequisite preparation before release build."
+        }
+    }
+
+    try { $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -ErrorAction Stop }
+    catch { throw "Flutter offline prerequisite package_config.json is invalid: $($_.Exception.Message)" }
+    if ($config.configVersion -ne 2 -or -not $config.packages) { throw 'Flutter offline prerequisite package_config.json has no supported package graph.' }
+    if ([string]$config.generator -cne 'pub') { throw "Flutter offline prerequisite package_config.json has unexpected generator '$($config.generator)'." }
+    if ([string]$config.generatorVersion -cne '3.5.4') { throw "Flutter offline prerequisite package_config.json has unexpected Dart generator version '$($config.generatorVersion)'." }
+    if ([string]$config.flutterVersion -cne '3.24.5') { throw "Flutter offline prerequisite package_config.json has unexpected Flutter version '$($config.flutterVersion)'." }
+    $configuredFlutterRoot = ([Uri][string]$config.flutterRoot).LocalPath
+    if (-not (Get-FullPath $configuredFlutterRoot).Equals((Get-FullPath $ExpectedFlutterRoot), [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Flutter offline prerequisite package_config.json points at unexpected Flutter root '$configuredFlutterRoot'."
+    }
+
+    $configItem = Get-Item -LiteralPath $configPath
+    $newestInput = @(Get-Item -LiteralPath $lockPath, $pubspecPath | Sort-Object LastWriteTimeUtc -Descending)[0]
+    if ($configItem.LastWriteTimeUtc -lt $newestInput.LastWriteTimeUtc) {
+        throw "Flutter offline prerequisite package_config.json is stale relative to '$($newestInput.Name)'."
+    }
+
+    $pubspecText = Get-Content -LiteralPath $pubspecPath -Raw
+    if ($pubspecText -notmatch '(?m)^name:\s*([A-Za-z0-9_]+)\s*$') { throw 'Unable to identify the application package name in pubspec.yaml.' }
+    $applicationName = $Matches[1]
+    $lockText = Get-Content -LiteralPath $lockPath -Raw
+    $lockMatches = [regex]::Matches($lockText, '(?ms)^  (?<name>[A-Za-z0-9_]+):\r?\n(?<body>(?:    .*?(?:\r?\n|$))+?)((?=^  [A-Za-z0-9_]+:)|(?=^sdks:))')
+    if ($lockMatches.Count -eq 0) { throw 'Flutter offline prerequisite pubspec.lock has no parseable locked package graph.' }
+    $locked = @{}
+    foreach ($match in $lockMatches) {
+        $body = $match.Groups['body'].Value
+        $sourceMatch = [regex]::Match($body, '(?m)^    source:\s*(\S+)\s*$')
+        $versionMatch = [regex]::Match($body, '(?m)^    version:\s*"([^"]+)"\s*$')
+        if (-not $sourceMatch.Success -or -not $versionMatch.Success) {
+            throw "Flutter offline prerequisite lock entry '$($match.Groups['name'].Value)' is incomplete."
+        }
+        $locked[$match.Groups['name'].Value] = [pscustomobject]@{ Source = $sourceMatch.Groups[1].Value; Version = $versionMatch.Groups[1].Value; Body = $body }
+    }
+
+    $configured = @{}
+    $configBase = [Uri](Get-FullPath $configPath)
+    foreach ($package in @($config.packages)) {
+        $name = [string]$package.name
+        if ([string]::IsNullOrWhiteSpace($name) -or $configured.ContainsKey($name)) { throw "Flutter offline prerequisite package_config.json contains an empty or duplicate package name '$name'." }
+        try { $root = ([Uri]::new($configBase, [string]$package.rootUri)).LocalPath }
+        catch { throw "Flutter offline prerequisite package '$name' has an invalid rootUri." }
+        $configured[$name] = Get-FullPath $root
+    }
+    if (-not $configured.ContainsKey($applicationName) -or -not $configured[$applicationName].Equals((Get-FullPath $RepoRoot), [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Flutter offline prerequisite package_config.json does not identify the current application root '$applicationName'."
+    }
+    $graphDifference = @(Compare-Object @($locked.Keys | Sort-Object) @($configured.Keys | Where-Object { $_ -ne $applicationName } | Sort-Object))
+    if ($graphDifference) { throw "Flutter offline prerequisite package graph differs from pubspec.lock: $($graphDifference.InputObject -join ', ')." }
+
+    foreach ($name in @($locked.Keys | Sort-Object)) {
+        $root = $configured[$name]
+        if (-not (Test-Path -LiteralPath $root -PathType Container)) { throw "Flutter offline prerequisite package root is missing for '$name': '$root'." }
+        if ($locked[$name].Source -eq 'hosted') {
+            $expectedLeaf = "$name-$($locked[$name].Version)"
+            if (-not (Split-Path -Leaf $root).Equals($expectedLeaf, [StringComparison]::OrdinalIgnoreCase)) { throw "Configured hosted package root does not match pubspec.lock for '$name'." }
+        } elseif ($locked[$name].Source -eq 'git') {
+            $resolvedRef = [regex]::Match($locked[$name].Body, '(?m)^      resolved-ref:\s*"?([0-9a-f]{40})"?\s*$')
+            if (-not $resolvedRef.Success -or -not (Split-Path -Leaf $root).EndsWith("-$($resolvedRef.Groups[1].Value)", [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Configured Git package root does not match the locked resolved-ref for '$name'."
+            }
+        } elseif ($locked[$name].Source -eq 'path') {
+            if ($locked[$name].Body -notmatch '(?m)^      path:\s*"?([^"\r\n]+)"?\s*$') { throw "Locked path package '$name' has no parseable repository path." }
+            $expectedPathRoot = Get-FullPath (Join-Path $RepoRoot $Matches[1])
+            if (-not (Test-Path -LiteralPath $expectedPathRoot -PathType Container)) { throw "Repository path dependency is missing for '$name': '$expectedPathRoot'." }
+            if (-not $root.Equals($expectedPathRoot, [StringComparison]::OrdinalIgnoreCase)) { throw "Configured path dependency root differs from pubspec.lock for '$name'." }
+        } elseif ($locked[$name].Source -ne 'sdk') {
+            throw "Flutter offline prerequisite lock entry '$name' has unsupported source '$($locked[$name].Source)'."
+        }
+    }
+}
+
+function Assert-FlutterBuildResult {
+    param(
+        [Parameter(Mandatory)]$Run,
+        [Parameter(Mandatory)][string]$ExeOutput,
+        [Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[string]]$Warnings
+    )
+    if ($Run.ExitCode -ne 0) { throw "Flutter Windows release build failed with exit $($Run.ExitCode)." }
+    if ($Run.Output -match '(?im)^\s*(Running|Resolving)\s+.*(pub get|dependencies)') {
+        $Warnings.Add('Flutter --no-pub build reported unexpected dependency-resolution text. Review raw build output.')
+    }
+    if (-not (Test-Path -LiteralPath $ExeOutput -PathType Leaf)) { throw 'Flutter proof executable was not recreated.' }
+}
+
 function Get-FileEvidence {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$RelativeTo)
     $item = Get-Item -LiteralPath $Path -ErrorAction Stop
@@ -409,17 +507,14 @@ try {
         $script:NativeEvidence | Add-Member -NotePropertyName size -NotePropertyValue $nativeFile.size
     }
 
-    Write-Stage 'FLUTTER-BUILD' 'Build the pinned Flutter Windows release bundle without manual restoration' {
-        $flutterRun = Invoke-Streaming -FilePath $flutterExe -Arguments @('build','windows','--release') -WorkingDirectory $script:RepoRoot
-        if ($flutterRun.Output -match '(?im)^\s*Downloading packages') {
-            $script:FlutterStatus = 'FAIL'
-            throw 'Flutter attempted an implicit package download; offline local prerequisites are incomplete.'
-        }
-        if ($flutterRun.Output -match '(?im)^\s*(Running|Resolving)\s+.*(pub get|dependencies)') {
-            $script:Warnings.Add('Flutter build reported an implicit dependency action; no manual restoration was run. Review raw build output.')
-        }
-        if ($flutterRun.ExitCode -ne 0) { $script:FlutterStatus = 'FAIL'; throw "Flutter Windows release build failed with exit $($flutterRun.ExitCode)." }
-        if (-not (Test-Path -LiteralPath $exeOutput -PathType Leaf)) { $script:FlutterStatus = 'FAIL'; throw 'Flutter proof executable was not recreated.' }
+    Write-Stage 'FLUTTER-PREREQUISITES' 'Validate the complete local package graph before the no-pub build' {
+        Assert-FlutterOfflinePrerequisites -RepoRoot $script:RepoRoot -ExpectedFlutterRoot $flutterSdk
+    }
+
+    Write-Stage 'FLUTTER-BUILD' 'Build the pinned Flutter Windows release bundle with package resolution disabled' {
+        $flutterRun = Invoke-Streaming -FilePath $flutterExe -Arguments @('build','windows','--release','--no-pub') -WorkingDirectory $script:RepoRoot
+        try { Assert-FlutterBuildResult -Run $flutterRun -ExeOutput $exeOutput -Warnings $script:Warnings }
+        catch { $script:FlutterStatus = 'FAIL'; throw }
         $script:FlutterStatus = 'PASS'
     }
 
