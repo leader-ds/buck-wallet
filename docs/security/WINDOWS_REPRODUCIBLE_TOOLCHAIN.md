@@ -50,10 +50,14 @@ The P3 feature commit is a review candidate, not a permanent source compatibilit
 
 | Input | SHA-256 |
 |---|---|
-| `pubspec.yaml` | `beb5294fb9eb7391b642f98b26fa0ec6193238c58c3a9d6c5027cdae9f1d9f0f` |
+| `pubspec.yaml` | `49dbe1d3c475b0bb24de698ab7cc437f8b2f73f5c1fb5a699e509b0676772b8b` |
 | `pubspec.lock` | `5aeac11a4d8d6dae061de23af09cab7ba5181b64817fe759ab7af00bfaeda1ab` |
 | `packages/warp_api_ffi/pubspec.yaml` | `f58b2c966f60e4f2aa3dbd24bc88592be7d90ea7c62b8e7acc0e079903950135` |
 | `packages/warp_api_ffi/pubspec.lock` | `361ef5fe0f2d37ec49164adf6b67b8f38a3c5c615ed6c86ce7297e9855130479` |
+
+The current `pubspec.yaml` authority is bound to canonical commit `61eeaccd366013a45f7b8a79d56c7fb5ddca6646`, Git blob `a9e10928ddd7d9a481cc03e0af0ab748a0310cfa`, and Windows checkout SHA-256 `49dbe1d3c475b0bb24de698ab7cc437f8b2f73f5c1fb5a699e509b0676772b8b`.
+
+**FORENSIC NOTE:** RC1B retired `beb5294fb9eb7391b642f98b26fa0ec6193238c58c3a9d6c5027cdae9f1d9f0f` because it did not correspond to the claimed committed `pubspec.yaml` source bytes.
 
 - Dart root constraint: `>=3.0.0 <4.0.0`
 - Resolved Dart constraint: `>=3.4.0 <4.0.0`
