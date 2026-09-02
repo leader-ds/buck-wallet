@@ -141,8 +141,6 @@ flutter:
     - assets/branding/
     - assets/sapling-spend.params
     - assets/sapling-output.params
-    - assets/welcome.png
-    - assets/self-custody.png
     - assets/icon.png
     - assets/about.md
     - assets/wallet.svg

@@ -72,42 +72,80 @@ class _DisclaimerState extends State<DisclaimerPage> {
     final t = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(s.disclaimer)),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Image.asset('assets/self-custody.png', fit: BoxFit.fill),
-              Gap(16),
-              Text(s.disclaimerText, style: t.textTheme.headlineMedium),
-              Gap(16),
-              DisclaimerItem(
-                accepted[0],
-                name: 'd1',
-                text: s.disclaimer_1,
-                onChanged: (v) => setState(() => accepted[0] = v!),
-              ),
-              Gap(16),
-              DisclaimerItem(
-                accepted[1],
-                name: 'd2',
-                text: s.disclaimer_2,
-                onChanged: (v) => setState(() => accepted[1] = v!),
-              ),
-              Gap(16),
-              DisclaimerItem(
-                accepted[2],
-                name: 'd3',
-                text: s.disclaimer_3,
-                onChanged: (v) => setState(() => accepted[2] = v!),
-              ),
-              Gap(16),
-              ButtonBar(children: [
-                IconButton.outlined(
+      body: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Column(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: constraints.maxHeight < 620 ? 16 : 24,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF111111),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: buckCherryRed, width: 2),
+                    ),
+                    child: Column(children: [
+                      Image.asset(
+                        'assets/branding/buck_symbol_white.png',
+                        height: constraints.maxHeight < 620 ? 72 : 104,
+                        fit: BoxFit.contain,
+                      ),
+                      const Gap(12),
+                      Text(
+                        s.disclaimerText,
+                        style: t.textTheme.headlineMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ]),
+                  ),
+                  const Gap(20),
+                  DisclaimerItem(
+                    accepted[0],
+                    name: 'd1',
+                    text: s.disclaimer_1,
+                    onChanged: (v) => setState(() => accepted[0] = v!),
+                  ),
+                  Gap(16),
+                  DisclaimerItem(
+                    accepted[1],
+                    name: 'd2',
+                    text: s.disclaimer_2,
+                    onChanged: (v) => setState(() => accepted[1] = v!),
+                  ),
+                  Gap(16),
+                  DisclaimerItem(
+                    accepted[2],
+                    name: 'd3',
+                    text: s.disclaimer_3,
+                    onChanged: (v) => setState(() => accepted[2] = v!),
+                  ),
+                  const Gap(20),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: buckCherryRed,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 14,
+                      ),
+                    ),
                     onPressed: allAccepted ? _accept : null,
-                    icon: Icon(Icons.check))
-              ]),
-            ],
+                    icon: const Icon(Icons.check),
+                    label: Text(s.newAccount),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -136,13 +174,16 @@ class DisclaimerItem extends StatelessWidget {
     final t = Theme.of(context);
     return DecoratedBox(
         decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
-                color: accepted ? Colors.green : Colors.red, width: 2)),
+                color: accepted ? buckCherryRed : t.colorScheme.outline,
+                width: accepted ? 2 : 1)),
         child: Padding(
             padding: EdgeInsets.all(8),
             child: FormBuilderCheckbox(
               name: name,
-              title: Text(text, style: t.textTheme.headlineSmall),
+              activeColor: buckCherryRed,
+              title: Text(text, style: t.textTheme.titleMedium),
               onChanged: onChanged,
             )));
   }
